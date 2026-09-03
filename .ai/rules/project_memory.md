@@ -19,6 +19,10 @@ Este arquivo faz o gerenciamento interno de regras do projeto para melhor organi
    - Priorizar sempre extrair 100% dos recursos nativos que já temos na stack instalada.
    - **Confirmação Obrigatória:** Se for realmente a única escolha e estritamente necessária, a IA DEVE pausar, perguntar explicitamente no chat se o usuário autoriza a instalação da dependência X, e aguardar a confirmação/negação antes de executar qualquer comando.
 
+3. **Testes & Qualidade Garantida:**
+   - **SEMPRE criar e executar testes automatizados (`php artisan test`).**
+   - Cada nova funcionalidade, regra de negócio, permissão ou fluxo de API deve possuir testes correspondentes para garantir que tudo está funcionando de ponta a ponta sem quebras.
+
 ---
 
 ## 🏛️ Diretrizes & Convenções da Aplicação
@@ -30,8 +34,8 @@ Este arquivo faz o gerenciamento interno de regras do projeto para melhor organi
 
 2. **Roadmap de Desenvolvimento (8 Passos Executivos):**
    - **Passo 1 (Concluído):** Setup do Ambiente (PHP local + MySQL + `.env` + migrations base).
-   - **Passo 2:** Modelagem do Banco (ERD completo).
-   - **Passo 3:** Migrations e Seeders com Factories realistas.
+   - **Passo 2 (Concluído):** Modelagem do Banco (ERD completo).
+   - **Passo 3 (Concluído):** Migrations e Seeders com Factories realistas.
    - **Passo 4:** Autenticação Sanctum & Papéis (Dono, Gerente, Garçom, Cozinheiro, Caixa) + Policies por loja.
    - **Passo 5:** CRUD do Cardápio (Categorias, Produtos, Variações, Adicionais).
    - **Passo 6:** Mesas e Abertura de Comanda.
