@@ -25,3 +25,12 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Local AI Memory & Scratch files
+.claude/
+/.claude
+/.memory/
+
+
+
+
