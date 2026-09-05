@@ -1,0 +1,59 @@
+<?php
+
+namespace App\Policies;
+
+use App\Models\Order;
+use App\Models\User;
+
+class OrderPolicy
+{
+    public function viewAny(User $user): bool
+    {
+        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'chef', 'cashier']);
+    }
+
+    public function view(User $user, Order $order): bool
+    {
+        // dono, gerente, cozinheiro e caixa veem a fila inteira
+        if (in_array($user->role?->name, ['owner', 'manager', 'chef', 'cashier'])) {
+            return true;
+        }
+
+        // garçom só enxerga o pedido que ele abriu ou que ta na mesa dele
+        if ($user->role?->name === 'waiter') {
+            return $order->user_id === $user->id || $order->table_id !== null;
+        }
+
+        return false;
+    }
+
+    public function create(User $user): bool
+    {
+        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'cashier']);
+    }
+
+    public function update(User $user, Order $order): bool
+    {
+        if (in_array($user->role?->name, ['owner', 'manager'])) {
+            return true;
+        }
+
+        // cozinha só atualiza enquanto ta rolando o preparo
+        if ($user->role?->name === 'chef') {
+            return in_array($order->status, ['confirmed', 'preparing']);
+        }
+
+        // garçom só mexe se foi ele que abriu e antes de entregar/cancelar
+        if ($user->role?->name === 'waiter') {
+            return $order->user_id === $user->id && ! in_array($order->status, ['delivered', 'canceled']);
+        }
+
+        return false;
+    }
+
+    public function delete(User $user, Order $order): bool
+    {
+        // só a gerência/dono pode cancelar ou apagar pedido
+        return in_array($user->role?->name, ['owner', 'manager']);
+    }
+}
