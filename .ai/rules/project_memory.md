@@ -16,7 +16,7 @@ Este arquivo faz o gerenciamento interno de regras do projeto para melhor organi
    - **Passo 2 (Concluído):** Modelagem do Banco (ERD completo).
    - **Passo 3 (Concluído):** Migrations e Seeders com Factories realistas.
    - **Passo 4 (Concluído):** Autenticação Sanctum & Papéis (Dono, Gerente, Garçom, Cozinheiro, Caixa) + Policies por recurso.
-   - **Passo 5:** CRUD do Cardápio (Categorias, Produtos, Variações, Adicionais).
-   - **Passo 6:** Mesas e Abertura de Comanda.
+   - **Passo 5 (Concluído):** CRUD do Cardápio (Categorias, Produtos, Variações e Ficha Técnica de Ingredientes).
+   - **Passo 6 (Concluído):** Mesas e Abertura de Comanda (Gestão do Salão e Comandas ativas).
    - **Passo 7:** Pedidos & Máquina de Estados (`pendente` ➔ `preparo` ➔ `pronto` ➔ `entregue` ➔ `pago`) com Reverb em tempo real.
    - **Passo 8:** Estoque Vinculado a Receitas (Ficha Técnica & baixa automática).
