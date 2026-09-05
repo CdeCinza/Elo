@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\IngredientController;
+use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\TableController;
 use Illuminate\Support\Facades\Route;
@@ -34,4 +36,12 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     // Gestão de Mesas e Abertura de Comandas do Salão
     Route::post('/tables/{table}/open-tab', [TableController::class, 'openTab']);
     Route::apiResource('/tables', TableController::class);
+
+    // Pedidos & Máquina de Estados (Salão, Delivery, Balcão)
+    Route::post('/orders/{order}/items', [OrderController::class, 'addItem']);
+    Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus']);
+    Route::apiResource('/orders', OrderController::class)->except(['destroy']);
+
+    // Gestão de Insumos & Estoque
+    Route::apiResource('/ingredients', IngredientController::class);
 });

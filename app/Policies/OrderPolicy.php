@@ -14,12 +14,10 @@ class OrderPolicy
 
     public function view(User $user, Order $order): bool
     {
-        // dono, gerente, cozinheiro e caixa veem a fila inteira
         if (in_array($user->role?->name, ['owner', 'manager', 'chef', 'cashier'])) {
             return true;
         }
 
-        // garçom só enxerga o pedido que ele abriu ou que ta na mesa dele
         if ($user->role?->name === 'waiter') {
             return $order->user_id === $user->id || $order->table_id !== null;
         }
@@ -38,12 +36,11 @@ class OrderPolicy
             return true;
         }
 
-        // cozinha só atualiza enquanto ta rolando o preparo
+        // cozinha confirma ou atualiza enquanto ta no fluxo de preparo
         if ($user->role?->name === 'chef') {
-            return in_array($order->status, ['confirmed', 'preparing']);
+            return in_array($order->status, ['pending', 'confirmed', 'preparing']);
         }
 
-        // garçom só mexe se foi ele que abriu e antes de entregar/cancelar
         if ($user->role?->name === 'waiter') {
             return $order->user_id === $user->id && ! in_array($order->status, ['delivered', 'canceled']);
         }
@@ -53,7 +50,6 @@ class OrderPolicy
 
     public function delete(User $user, Order $order): bool
     {
-        // só a gerência/dono pode cancelar ou apagar pedido
         return in_array($user->role?->name, ['owner', 'manager']);
     }
 }

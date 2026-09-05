@@ -18,5 +18,5 @@ Este arquivo faz o gerenciamento interno de regras do projeto para melhor organi
    - **Passo 4 (Concluído):** Autenticação Sanctum & Papéis (Dono, Gerente, Garçom, Cozinheiro, Caixa) + Policies por recurso.
    - **Passo 5 (Concluído):** CRUD do Cardápio (Categorias, Produtos, Variações e Ficha Técnica de Ingredientes).
    - **Passo 6 (Concluído):** Mesas e Abertura de Comanda (Gestão do Salão e Comandas ativas).
-   - **Passo 7:** Pedidos & Máquina de Estados (`pendente` ➔ `preparo` ➔ `pronto` ➔ `entregue` ➔ `pago`) com Reverb em tempo real.
-   - **Passo 8:** Estoque Vinculado a Receitas (Ficha Técnica & baixa automática).
+   - **Passo 7 (Concluído):** Pedidos & Máquina de Estados (`pending` ➔ `confirmed` ➔ `preparing` ➔ `ready` ➔ `delivered` / `canceled`) com Reverb em tempo real.
+   - **Passo 8 (Concluído):** Estoque Vinculado a Receitas (Ficha Técnica & baixa automática por confirmação de pedido).
