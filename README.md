@@ -86,24 +86,56 @@ erDiagram
 
 ## 🗺️ Roadmap de Desenvolvimento Executivo
 
-Seguiremos rigorosamente a seguinte sequência para a construção do projeto:
-
-1. **🛠️ 1. Setup do Ambiente:**
+### ⚙️ BACKEND (Laravel 12 API & Core Engine)
+1. **🛠️ 1. Setup do Ambiente:** [CONCLUÍDO]
    Configurar Laravel, Docker (`App`, `MySQL 8`, `Redis`), validar conexões e execução limpa de `migrate` e `db:seed`.
-2. **📐 2. Modelagem do Banco (ER Completo):**
-   Desenho prévio de todas as tabelas (cardápio, mesas, pedidos, cozinha, estoque, pagamento, usuários/roles) para evitar retrabalho de schema.
-3. **🗄️ 3. Migrations e Seeders:**
-   Construção de migrations reversíveis (`down`), com foreign keys, e criação de factories/seeders com dados realistas de restaurante.
-4. **🔐 4. Autenticação & Papéis (Sanctum + RBAC):**
-   Implementação de autenticação via token e papéis (`Dono`, `Gerente`, `Garçom`, `Cozinheiro`, `Caixa`) com Policies para proteção de endpoints.
-5. **🍕 5. CRUD do Cardápio:**
+2. **📐 2. Modelagem do Banco (ER Completo):** [CONCLUÍDO]
+   Desenho prévio de todas as tabelas (cardápio, mesas, pedidos, cozinha, estoque, pagamento, usuários/roles).
+3. **🗄️ 3. Migrations e Seeders:** [CONCLUÍDO]
+   Construção de migrations reversíveis (`down`), com foreign keys, e criação de factories/seeders com dados realistas.
+4. **🔐 4. Autenticação & Papéis (Sanctum + RBAC):** [CONCLUÍDO]
+   Implementação de autenticação via token e papéis (`Dono`, `Gerente`, `Garçom`, `Cozinheiro`, `Caixa`) com Policies.
+5. **🍕 5. CRUD do Cardápio:** [CONCLUÍDO]
    APIs robustas para Categorias, Produtos, Variações e Adicionais com Form Requests e API Resources.
-6. **🪑 6. Mesas & Abertura de Comanda:**
+6. **🪑 6. Mesas & Abertura de Comanda:** [CONCLUÍDO]
    Gestão de status de mesas (`livre`, `ocupada`, `reservada`) e vinculação de comandas ao atendimento do salão.
-7. **🛒 7. Pedidos (Máquina de Estados - Coração do Sistema):**
-   Criação de pedidos (`salão`, `delivery`, `balcão`) com máquina de estados (`pendente` ➔ `preparo` ➔ `pronto` ➔ `entregue` ➔ `pago`), validações de transição e notificações em tempo real.
-8. **📦 8. Estoque Vinculado a Receitas (Ficha Técnica):**
+7. **🛒 7. Pedidos (Máquina de Estados - Coração do Sistema):** [CONCLUÍDO]
+   Criação de pedidos (`salão`, `delivery`, `balcão`) com máquina de estados (`pendente` ➔ `preparo` ➔ `pronto` ➔ `entregue` ➔ `pago`).
+8. **📦 8. Estoque Vinculado a Receitas (Ficha Técnica):** [CONCLUÍDO]
    Cadastro de insumos/ingredientes, consumo por ficha técnica (`qty_used`), baixa automática ao confirmar pedidos e bloqueio por escassez.
+9. **⚡ 9. Filas & Processamento Assíncrono (Jobs & Queues):** [PENDENTE / FUTURO]
+   Estruturação de filas (`database` / `redis`) com Jobs assíncronos para envio de notificações/e-mails de pedidos e geração de relatórios.
+10. **🪝 10. Pagamentos & Webhooks (Stripe / Gateway):** [PENDENTE / FUTURO]
+    Criação do endpoint público de webhook de pagamentos (`/api/v1/webhooks/payments`), validação HMAC e idempotência.
+
+---
+
+### 💻 FRONTEND (Next.js 14 App Router + Tailwind + Shadcn)
+
+#### 📱 Módulo 1: Cliente no Salão (Mobile First - QR Code na Mesa)
+* **Passo F1 - Setup do Projeto Next.js:** [CONCLUÍDO]
+  Inicialização com Next.js 14 App Router, TypeScript, Tailwind CSS, Lucide Icons (`lucide-react`) e cliente API Axios (`src/lib/api.ts`).
+* **Passo F2 - Tela Principal (Home do Salão):**
+  * Header fixo com identificador da mesa (`Mesa 08` com badge de status) e botão de idioma/perfil.
+  * Banner Hero Rotativo de destaques do chef/combo da casa.
+  * Pills de ações rápidas: `Chamar Garçom`, `Ver Conta Atual`, `Wifi da Casa`.
+  * Grid de Feed Rápido com "Mais Pedidos" e "Sugestões para Compartilhar".
+* **Passo F3 - Tela de Cardápio (Exploração & Customização):**
+  * Campo de busca textual + chips de filtro rápido (Vegetariano, Sem Glúten, Bebidas).
+  * Sticky Sub-nav com navegação em abas (Entradas, Pratos Principais, Sobremesas, Coquetéis).
+  * Cards de item com foto 1:1, tempo de preparo (`15-20 min`) e preço em destaque.
+  * Bottom Sheet / Modal deslizante de customização (ponto da carne, remoção de ingredientes, acompanhamentos e observações).
+* **Passo F4 - Tela de Pedido Online no Local (Mesa & Cozinha):**
+  * Comanda Digital Ativa com badges em tempo real: `Na Fila` (Amarelo) ➔ `Em Preparo` (Laranja) ➔ `Pronto/Entregue` (Verde).
+  * Carrinho Pendente recolhível para adição de novas rodadas.
+  * Fechamento e divisão da conta (Split por pessoa, taxa de serviço de 10% opcional e QR Code Pix).
+
+#### 🖥️ Módulo 2: Balcão, Caixa e Cozinha (Desktop & Tablet)
+* **Passo F5 - Painel Desktop do Balcão / Caixa (POS/PDV):**
+  * Mapa de Salão em Grid Interativo com status visual das mesas.
+  * Split screen para visualização e fechamento rápido de comandas no caixa.
+* **Passo F6 - KDS / Tela de Cozinha (Real-time WebSocket):**
+  * Fila Kanban (`Pendente` ➔ `Em Preparo` ➔ `Pronto`) conectada via WebSockets com Laravel Reverb e alertas sonoros.
 
 ---
 
