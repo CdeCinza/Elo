@@ -13,6 +13,7 @@ class Product extends Model
     use HasFactory;
 
     protected $fillable = [
+        'restaurant_id',
         'category_id',
         'name',
         'description',
@@ -25,6 +26,11 @@ class Product extends Model
         'price' => 'decimal:2',
         'available' => 'boolean',
     ];
+
+    public function restaurant(): BelongsTo
+    {
+        return $this->belongsTo(Restaurant::class);
+    }
 
     public function category(): BelongsTo
     {

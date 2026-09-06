@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
@@ -16,6 +17,8 @@ class PosKdsApiTest extends TestCase
 {
     use RefreshDatabase;
 
+    private Restaurant $restaurant;
+
     private RestaurantTable $table;
 
     private Product $product;
@@ -24,21 +27,33 @@ class PosKdsApiTest extends TestCase
     {
         parent::setUp();
 
+        $this->restaurant = Restaurant::create([
+            'name' => 'Restaurante Teste',
+            'slug' => 'restaurante-teste',
+            'status' => 'active',
+        ]);
+
         $role = Role::create(['name' => 'waiter', 'label' => 'Garçom']);
-        User::factory()->create(['role_id' => $role->id]);
+        User::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'role_id' => $role->id,
+        ]);
 
         $this->table = RestaurantTable::create([
+            'restaurant_id' => $this->restaurant->id,
             'number' => 'Mesa 1',
             'capacity' => 4,
             'status' => 'free',
         ]);
 
         $category = Category::create([
+            'restaurant_id' => $this->restaurant->id,
             'name' => 'Burgers',
             'description' => 'Hambúrgueres',
         ]);
 
         $this->product = Product::create([
+            'restaurant_id' => $this->restaurant->id,
             'category_id' => $category->id,
             'name' => 'Smash ELO Bacon',
             'description' => 'Burger artesanal',
@@ -128,6 +143,7 @@ class PosKdsApiTest extends TestCase
     {
         // Cria pedido com item
         $order = Order::create([
+            'restaurant_id' => $this->restaurant->id,
             'table_id' => $this->table->id,
             'type' => 'dine_in',
             'status' => 'pending',

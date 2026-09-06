@@ -17,6 +17,7 @@ class User extends Authenticatable
     use HasApiTokens, HasFactory, Notifiable;
 
     protected $fillable = [
+        'restaurant_id',
         'role_id',
         'name',
         'email',
@@ -36,9 +37,24 @@ class User extends Authenticatable
         ];
     }
 
+    public function restaurant(): BelongsTo
+    {
+        return $this->belongsTo(Restaurant::class);
+    }
+
     public function role(): BelongsTo
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function isSuperAdmin(): bool
+    {
+        return $this->role?->name === 'super_admin';
+    }
+
+    public function isRestaurantAdmin(): bool
+    {
+        return $this->role?->name === 'restaurant_admin' || $this->role?->name === 'owner';
     }
 
     public function orders(): HasMany

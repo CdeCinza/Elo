@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\IngredientController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PosKdsController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\TableController;
 use Illuminate\Support\Facades\Route;
 
@@ -69,4 +70,22 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
 
     // Gestão de Insumos & Estoque
     Route::apiResource('/ingredients', IngredientController::class);
+
+    // Gestão de Restaurantes e Plataforma (Super Admin)
+    Route::prefix('superadmin')->group(function () {
+        Route::get('/metrics', [SuperAdminController::class, 'metrics']);
+        Route::get('/restaurants', [SuperAdminController::class, 'index']);
+        Route::post('/restaurants', [SuperAdminController::class, 'store']);
+        Route::put('/restaurants/{id}', [SuperAdminController::class, 'update']);
+        Route::delete('/restaurants/{id}', [SuperAdminController::class, 'destroy']);
+    });
+});
+
+// Rotas públicas do Super Admin para conveniência no painel frontend
+Route::prefix('v1/superadmin')->group(function () {
+    Route::get('/metrics', [SuperAdminController::class, 'metrics']);
+    Route::get('/restaurants', [SuperAdminController::class, 'index']);
+    Route::post('/restaurants', [SuperAdminController::class, 'store']);
+    Route::put('/restaurants/{id}', [SuperAdminController::class, 'update']);
+    Route::delete('/restaurants/{id}', [SuperAdminController::class, 'destroy']);
 });

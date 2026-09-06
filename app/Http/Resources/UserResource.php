@@ -18,15 +18,21 @@ class UserResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'email' => $this->email,
-            'role' => $this->whenLoaded('role', fn () => [
+            'restaurant_id' => $this->restaurant_id,
+            'restaurant' => $this->restaurant ? [
+                'id' => $this->restaurant->id,
+                'name' => $this->restaurant->name,
+                'slug' => $this->restaurant->slug,
+                'logo_url' => $this->restaurant->logo_url,
+                'status' => $this->restaurant->status,
+            ] : null,
+            'role' => $this->role ? [
                 'id' => $this->role->id,
                 'name' => $this->role->name,
                 'label' => $this->role->label,
-            ], $this->role ? [
-                'id' => $this->role->id,
-                'name' => $this->role->name,
-                'label' => $this->role->label,
-            ] : null),
+            ] : null,
+            'is_super_admin' => $this->role?->name === 'super_admin',
+            'is_restaurant_admin' => in_array($this->role?->name, ['restaurant_admin', 'owner']),
             'created_at' => $this->created_at?->toIso8601String(),
         ];
     }

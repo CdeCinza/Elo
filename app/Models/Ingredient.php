@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Ingredient extends Model
@@ -11,6 +12,7 @@ class Ingredient extends Model
     use HasFactory;
 
     protected $fillable = [
+        'restaurant_id',
         'name',
         'stock_qty',
         'unit',
@@ -21,6 +23,11 @@ class Ingredient extends Model
         'stock_qty' => 'decimal:3',
         'min_stock_alert' => 'decimal:3',
     ];
+
+    public function restaurant(): BelongsTo
+    {
+        return $this->belongsTo(Restaurant::class);
+    }
 
     public function products(): BelongsToMany
     {

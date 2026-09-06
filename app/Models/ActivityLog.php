@@ -12,6 +12,7 @@ class ActivityLog extends Model
     use HasFactory;
 
     protected $fillable = [
+        'restaurant_id',
         'user_id',
         'subject_type',
         'subject_id',
@@ -22,6 +23,11 @@ class ActivityLog extends Model
     protected $casts = [
         'payload' => 'array',
     ];
+
+    public function restaurant(): BelongsTo
+    {
+        return $this->belongsTo(Restaurant::class);
+    }
 
     public function user(): BelongsTo
     {

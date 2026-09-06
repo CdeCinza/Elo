@@ -19,20 +19,23 @@ class DatabaseSeederTest extends TestCase
     {
         $this->seed();
 
-        $this->assertDatabaseHas('roles', ['name' => 'owner']);
+        $this->assertDatabaseHas('roles', ['name' => 'super_admin']);
+        $this->assertDatabaseHas('roles', ['name' => 'restaurant_admin']);
         $this->assertDatabaseHas('roles', ['name' => 'manager']);
         $this->assertDatabaseHas('roles', ['name' => 'waiter']);
         $this->assertDatabaseHas('roles', ['name' => 'chef']);
         $this->assertDatabaseHas('roles', ['name' => 'cashier']);
 
-        $this->assertDatabaseHas('users', ['email' => 'owner@elo.com']);
-        $this->assertDatabaseHas('users', ['email' => 'manager@elo.com']);
-        $this->assertDatabaseHas('users', ['email' => 'waiter@elo.com']);
+        $superAdminEmail = env('SUPERADMIN_EMAIL', 'matheusneru@gmail.com');
+        $this->assertDatabaseHas('users', ['email' => $superAdminEmail]);
+        $this->assertDatabaseHas('users', ['email' => 'dono@elo.com']);
+        $this->assertDatabaseHas('users', ['email' => 'gerente@elo.com']);
+        $this->assertDatabaseHas('users', ['email' => 'garcom@elo.com']);
         $this->assertDatabaseHas('users', ['email' => 'chef@elo.com']);
-        $this->assertDatabaseHas('users', ['email' => 'cashier@elo.com']);
+        $this->assertDatabaseHas('users', ['email' => 'caixa@elo.com']);
 
-        $this->assertEquals(5, Role::count());
-        $this->assertEquals(5, User::count());
+        $this->assertEquals(6, Role::count());
+        $this->assertEquals(6, User::count());
         $this->assertEquals(10, RestaurantTable::count());
         $this->assertEquals(4, Category::count());
         $this->assertEquals(5, Product::count());

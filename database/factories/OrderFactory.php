@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Order;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -17,6 +18,7 @@ class OrderFactory extends Factory
     public function definition(): array
     {
         return [
+            'restaurant_id' => Restaurant::first()?->id ?? Restaurant::factory(),
             'table_id' => RestaurantTable::factory(),
             'user_id' => User::factory(),
             'type' => 'dine_in',

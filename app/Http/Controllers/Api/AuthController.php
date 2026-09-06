@@ -31,7 +31,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Usuário cadastrado com sucesso.',
-            'user' => new UserResource($user->load('role')),
+            'user' => new UserResource($user->load(['role', 'restaurant'])),
             'access_token' => $token,
             'token_type' => 'Bearer',
         ], 201);
@@ -52,7 +52,7 @@ class AuthController extends Controller
 
         return response()->json([
             'message' => 'Login realizado com sucesso.',
-            'user' => new UserResource($user->load('role')),
+            'user' => new UserResource($user->load(['role', 'restaurant'])),
             'access_token' => $token,
             'token_type' => 'Bearer',
         ]);
@@ -61,7 +61,7 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json([
-            'user' => new UserResource($request->user()->load('role')),
+            'user' => new UserResource($request->user()->load(['role', 'restaurant'])),
         ]);
     }
 

@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -17,24 +18,68 @@ use Illuminate\Http\Request;
 class PosKdsController extends Controller
 {
     /**
+     * Auxiliar para identificar o restaurante atual a partir da requisição
+     */
+    private function getRestaurantId(Request $request): int
+    {
+        if ($request->header('X-Restaurant-Id')) {
+            return (int) $request->header('X-Restaurant-Id');
+        }
+        if ($request->query('restaurant_id')) {
+            return (int) $request->query('restaurant_id');
+        }
+        if ($request->user()?->restaurant_id) {
+            return (int) $request->user()->restaurant_id;
+        }
+
+        $restaurant = Restaurant::first();
+        if (! $restaurant) {
+            $restaurant = Restaurant::create([
+                'name' => 'Restaurante Principal',
+                'slug' => 'restaurante-principal',
+                'status' => 'active',
+            ]);
+        }
+
+        return (int) $restaurant->id;
+    }
+
+    /**
      * Auxiliar para localizar mesa por número ("01", "1", "Mesa 01", "Mesa 1")
      */
-    private function findTable(string $tableNumber): RestaurantTable
+    private function findTable(string $tableNumber, ?int $restaurantId = null): RestaurantTable
     {
         $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
         $intNumber = (int) $cleanNumber;
         $formattedTwoDigits = sprintf('%02d', $intNumber);
 
-        $table = RestaurantTable::where('number', $tableNumber)
-            ->orWhere('number', "Mesa {$cleanNumber}")
-            ->orWhere('number', "Mesa {$formattedTwoDigits}")
-            ->orWhere('number', "Mesa {$intNumber}")
-            ->orWhere('id', $tableNumber)
-            ->first();
+        $restId = $restaurantId;
+        if (! $restId) {
+            $restaurant = Restaurant::first() ?? Restaurant::create([
+                'name' => 'Restaurante Principal',
+                'slug' => 'restaurante-principal',
+                'status' => 'active',
+            ]);
+            $restId = (int) $restaurant->id;
+        }
+
+        $query = RestaurantTable::where('restaurant_id', $restId)
+            ->where(function ($q) use ($tableNumber, $cleanNumber, $formattedTwoDigits, $intNumber) {
+                $q->where('number', $tableNumber)
+                    ->orWhere('number', "Mesa {$cleanNumber}")
+                    ->orWhere('number', "Mesa {$formattedTwoDigits}")
+                    ->orWhere('number', "Mesa {$intNumber}")
+                    ->orWhere('id', $tableNumber);
+            });
+
+        $table = $query->first();
 
         if (! $table) {
             $table = RestaurantTable::firstOrCreate(
-                ['number' => "Mesa {$cleanNumber}"],
+                [
+                    'restaurant_id' => $restId,
+                    'number' => "Mesa {$cleanNumber}",
+                ],
                 ['capacity' => 4, 'status' => 'free']
             );
         }
@@ -57,15 +102,17 @@ class PosKdsController extends Controller
      */
     public function checkInTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         if ($table->status === 'free') {
             $table->update(['status' => 'occupied']);
         }
 
-        $defaultUser = User::first() ?? User::factory()->create();
+        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         ActivityLog::create([
+            'restaurant_id' => $restId,
             'user_id' => $defaultUser->id,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
@@ -88,15 +135,17 @@ class PosKdsController extends Controller
      */
     public function callWaiter(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         if ($table->status === 'free') {
             $table->update(['status' => 'occupied']);
         }
 
-        $defaultUser = User::first() ?? User::factory()->create();
+        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         ActivityLog::create([
+            'restaurant_id' => $restId,
             'user_id' => $defaultUser->id,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
@@ -120,12 +169,14 @@ class PosKdsController extends Controller
      */
     public function requestBill(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
         $table->update(['status' => 'bill_requested']);
 
-        $defaultUser = User::first() ?? User::factory()->create();
+        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         ActivityLog::create([
+            'restaurant_id' => $restId,
             'user_id' => $defaultUser->id,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
@@ -148,15 +199,19 @@ class PosKdsController extends Controller
      */
     public function getTables(Request $request): JsonResponse
     {
-        $tables = RestaurantTable::with([
-            'activeOrder.items.product',
-            'activeOrder.user',
-        ])
+        $restId = $this->getRestaurantId($request);
+
+        $tables = RestaurantTable::where('restaurant_id', $restId)
+            ->with([
+                'activeOrder.items.product',
+                'activeOrder.user',
+            ])
             ->orderBy('id')
             ->get();
 
         // Identifica chamados de garçom recentes (últimos 15 minutos)
-        $recentWaiterCalls = ActivityLog::where('action', 'waiter_called')
+        $recentWaiterCalls = ActivityLog::where('restaurant_id', $restId)
+            ->where('action', 'waiter_called')
             ->where('created_at', '>=', now()->subMinutes(15))
             ->pluck('subject_id')
             ->toArray();
@@ -202,13 +257,15 @@ class PosKdsController extends Controller
      */
     public function openTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
         $table->update(['status' => 'occupied']);
 
-        $defaultUser = User::first() ?? User::factory()->create();
+        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         if (! $table->activeOrder) {
             Order::create([
+                'restaurant_id' => $restId,
                 'table_id' => $table->id,
                 'user_id' => $defaultUser->id,
                 'type' => 'dine_in',
@@ -235,14 +292,16 @@ class PosKdsController extends Controller
             'notes' => 'nullable|string|max:255',
         ]);
 
-        $table = $this->findTable($tableNumber);
-        $defaultUser = User::first() ?? User::factory()->create();
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
+        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         $product = Product::findOrFail($request->product_id);
         $quantity = (int) $request->quantity;
         $itemSubtotal = (float) ($product->price * $quantity);
 
         $order = $table->activeOrder ?? Order::create([
+            'restaurant_id' => $restId,
             'table_id' => $table->id,
             'user_id' => $defaultUser->id,
             'type' => 'dine_in',
@@ -279,7 +338,8 @@ class PosKdsController extends Controller
      */
     public function closeTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
         $activeOrder = $table->activeOrder;
 
         if ($activeOrder) {
@@ -300,7 +360,8 @@ class PosKdsController extends Controller
         $table->update(['status' => 'free']);
 
         // Limpa registros de garçom chamado desta mesa
-        ActivityLog::where('action', 'waiter_called')
+        ActivityLog::where('restaurant_id', $restId)
+            ->where('action', 'waiter_called')
             ->where('subject_id', $table->id)
             ->delete();
 
@@ -319,7 +380,10 @@ class PosKdsController extends Controller
      */
     public function getKitchenOrders(Request $request): JsonResponse
     {
-        $orders = Order::with(['table', 'items.product.category'])
+        $restId = $this->getRestaurantId($request);
+
+        $orders = Order::where('restaurant_id', $restId)
+            ->with(['table', 'items.product.category'])
             ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])
             ->whereHas('items')
             ->orderBy('created_at', 'asc')
@@ -397,22 +461,29 @@ class PosKdsController extends Controller
             'capacity' => 'nullable|integer|min:1|max:50',
         ]);
 
+        $restId = $this->getRestaurantId($request);
         $cleanNumber = preg_replace('/[^0-9]/', '', $validated['number']);
+
         if ($cleanNumber !== '') {
             $intNumber = (int) $cleanNumber;
             $formattedTwoDigits = sprintf('%02d', $intNumber);
             $formattedName = "Mesa {$cleanNumber}";
 
-            $alreadyExists = RestaurantTable::where('number', $formattedName)
-                ->orWhere('number', "Mesa {$intNumber}")
-                ->orWhere('number', "Mesa {$formattedTwoDigits}")
-                ->orWhere('number', (string) $intNumber)
-                ->orWhere('number', $formattedTwoDigits)
-                ->orWhere('number', $validated['number'])
+            $alreadyExists = RestaurantTable::where('restaurant_id', $restId)
+                ->where(function ($q) use ($formattedName, $intNumber, $formattedTwoDigits, $validated) {
+                    $q->where('number', $formattedName)
+                        ->orWhere('number', "Mesa {$intNumber}")
+                        ->orWhere('number', "Mesa {$formattedTwoDigits}")
+                        ->orWhere('number', (string) $intNumber)
+                        ->orWhere('number', $formattedTwoDigits)
+                        ->orWhere('number', $validated['number']);
+                })
                 ->exists();
         } else {
             $formattedName = trim($validated['number']);
-            $alreadyExists = RestaurantTable::where('number', $formattedName)->exists();
+            $alreadyExists = RestaurantTable::where('restaurant_id', $restId)
+                ->where('number', $formattedName)
+                ->exists();
         }
 
         if ($alreadyExists) {
@@ -422,6 +493,7 @@ class PosKdsController extends Controller
         }
 
         $table = RestaurantTable::create([
+            'restaurant_id' => $restId,
             'number' => $formattedName,
             'capacity' => $validated['capacity'] ?? 4,
             'status' => 'free',
@@ -451,7 +523,8 @@ class PosKdsController extends Controller
      */
     public function updateTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         $validated = $request->validate([
             'number' => 'nullable|string|max:50',
@@ -487,7 +560,8 @@ class PosKdsController extends Controller
      */
     public function deleteTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         if ($table->status !== 'free') {
             return response()->json([
@@ -514,9 +588,11 @@ class PosKdsController extends Controller
      */
     public function clearWaiterCall(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
-        ActivityLog::where('action', 'waiter_called')
+        ActivityLog::where('restaurant_id', $restId)
+            ->where('action', 'waiter_called')
             ->where('subject_type', RestaurantTable::class)
             ->where('subject_id', $table->id)
             ->delete();
@@ -531,7 +607,8 @@ class PosKdsController extends Controller
      */
     public function resetTable(Request $request, string $tableNumber): JsonResponse
     {
-        $table = $this->findTable($tableNumber);
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         if ($table->activeOrder) {
             $table->activeOrder->update(['status' => 'canceled']);
@@ -539,7 +616,8 @@ class PosKdsController extends Controller
 
         $table->update(['status' => 'free']);
 
-        ActivityLog::where('subject_type', RestaurantTable::class)
+        ActivityLog::where('restaurant_id', $restId)
+            ->where('subject_type', RestaurantTable::class)
             ->where('subject_id', $table->id)
             ->delete();
 
@@ -549,14 +627,17 @@ class PosKdsController extends Controller
     }
 
     /**
-     * 15. Cria mesas padrão (01 a 10) caso o banco esteja vazio
+     * 15. Cria mesas padrão (01 a 10) caso o restaurante não possua mesas
      */
     public function seedDefaultTables(Request $request): JsonResponse
     {
-        if (RestaurantTable::count() === 0) {
+        $restId = $this->getRestaurantId($request);
+
+        if (RestaurantTable::where('restaurant_id', $restId)->count() === 0) {
             for ($i = 1; $i <= 10; $i++) {
                 $capacity = $i <= 4 ? 2 : ($i <= 8 ? 4 : 6);
                 RestaurantTable::create([
+                    'restaurant_id' => $restId,
                     'number' => "Mesa {$i}",
                     'capacity' => $capacity,
                     'status' => 'free',

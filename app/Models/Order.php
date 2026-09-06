@@ -13,6 +13,7 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
+        'restaurant_id',
         'table_id',
         'user_id',
         'type',
@@ -29,6 +30,11 @@ class Order extends Model
         'discount' => 'decimal:2',
         'total' => 'decimal:2',
     ];
+
+    public function restaurant(): BelongsTo
+    {
+        return $this->belongsTo(Restaurant::class);
+    }
 
     public function table(): BelongsTo
     {
