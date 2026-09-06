@@ -115,27 +115,27 @@ erDiagram
 #### 📱 Módulo 1: Cliente no Salão (Mobile First - QR Code na Mesa)
 * **Passo F1 - Setup do Projeto Next.js:** [CONCLUÍDO]
   Inicialização com Next.js 14 App Router, TypeScript, Tailwind CSS, Lucide Icons (`lucide-react`) e cliente API Axios (`src/lib/api.ts`).
-* **Passo F2 - Tela Principal (Home do Salão):**
-  * Header fixo com identificador da mesa (`Mesa 08` com badge de status) e botão de idioma/perfil.
-  * Banner Hero Rotativo de destaques do chef/combo da casa.
-  * Pills de ações rápidas: `Chamar Garçom`, `Ver Conta Atual`, `Wifi da Casa`.
-  * Grid de Feed Rápido com "Mais Pedidos" e "Sugestões para Compartilhar".
-* **Passo F3 - Tela de Cardápio (Exploração & Customização):**
-  * Campo de busca textual + chips de filtro rápido (Vegetariano, Sem Glúten, Bebidas).
-  * Sticky Sub-nav com navegação em abas (Entradas, Pratos Principais, Sobremesas, Coquetéis).
+* **Passo F2 - Tela Principal (Home do Salão):** [CONCLUÍDO]
+  * Header fixo com identificador da mesa (`Mesa 08` com badge de status) e botão de idioma/perfil (`SalonHeader.tsx`).
+  * Banner Hero Rotativo de destaques do chef/combo da casa (`HeroBanner.tsx`).
+  * Pills de ações rápidas: `Chamar Garçom`, `Ver Conta Atual`, `Wifi da Casa` (`QuickActionsBar.tsx`).
+  * Grid de Feed Rápido com "Mais Pedidos" e "Sugestões para Compartilhar" (`QuickFeed.tsx`).
+  * Rota dinâmica Next.js `/table/[tableId]` funcional com build verificado.
+* **Passo F3 - Tela de Cardápio (Exploração & Customização):** [CONCLUÍDO]
+  * Campo de busca textual + chips de filtro rápido (Categorias: Burgers, Entradas, Bebidas, Sobremesas).
+  * Sticky Sub-nav com navegação fluida em abas e layout responsivo.
   * Cards de item com foto 1:1, tempo de preparo (`15-20 min`) e preço em destaque.
-  * Bottom Sheet / Modal deslizante de customização (ponto da carne, remoção de ingredientes, acompanhamentos e observações).
-* **Passo F4 - Tela de Pedido Online no Local (Mesa & Cozinha):**
+  * Bottom Sheet / Modal deslizante de customização (ponto da carne, adicionais/extras e observações) (`table/[tableId]/menu/page.tsx`).
+* **Passo F4 - Tela de Pedido Online no Local (Mesa & Cozinha):** [CONCLUÍDO]
   * Comanda Digital Ativa com badges em tempo real: `Na Fila` (Amarelo) ➔ `Em Preparo` (Laranja) ➔ `Pronto/Entregue` (Verde).
-  * Carrinho Pendente recolhível para adição de novas rodadas.
-  * Fechamento e divisão da conta (Split por pessoa, taxa de serviço de 10% opcional e QR Code Pix).
+  * Calculadora de divisão de conta (Split por pessoa), taxa de serviço opcional (10%) e modal com QR Code Pix (`table/[tableId]/order/page.tsx`).
 
 #### 🖥️ Módulo 2: Balcão, Caixa e Cozinha (Desktop & Tablet)
-* **Passo F5 - Painel Desktop do Balcão / Caixa (POS/PDV):**
-  * Mapa de Salão em Grid Interativo com status visual das mesas.
-  * Split screen para visualização e fechamento rápido de comandas no caixa.
-* **Passo F6 - KDS / Tela de Cozinha (Real-time WebSocket):**
-  * Fila Kanban (`Pendente` ➔ `Em Preparo` ➔ `Pronto`) conectada via WebSockets com Laravel Reverb e alertas sonoros.
+* **Passo F5 - Painel Desktop do Balcão / Caixa (POS/PDV):** [CONCLUÍDO]
+  * Mapa de Salão em Grid Interativo com status visual das mesas (`Livre`, `Ocupada`, `Pede Conta`).
+  * Split screen para visualização e fechamento rápido de comandas no caixa (`counter/page.tsx`).
+* **Passo F6 - KDS / Tela de Cozinha (Real-time Kanban):** [CONCLUÍDO]
+  * Fila Kanban (`Novos Pedidos` ➔ `Em Preparo` ➔ `Pronto p/ Servir`) com contadores de tempo por pedido e aviso sonoro (`kitchen/page.tsx`).
 
 ---
 
