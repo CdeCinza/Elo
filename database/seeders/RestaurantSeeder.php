@@ -69,47 +69,74 @@ class RestaurantSeeder extends Seeder
         $coke = Ingredient::create(['name' => 'Lata Coca-Cola 350ml (un)', 'stock_qty' => 120, 'unit' => 'unidade', 'min_stock_alert' => 24]);
 
         // 5. Criar Categorias & Produtos com Ficha Técnica
-        $catBurgers = Category::create(['name' => 'Hambúrgueres Artesanais', 'description' => 'Hambúrgueres feitos na grelha']);
-        $catSides = Category::create(['name' => 'Acompanhamentos', 'description' => 'Porções deliciosas']);
-        $catDrinks = Category::create(['name' => 'Bebidas', 'description' => 'Refrigerantes e sucos']);
+        $catBurgers = Category::create(['name' => 'Burgers', 'description' => 'Hambúrgueres artesanais feitos na grelha']);
+        $catSides = Category::create(['name' => 'Entradas', 'description' => 'Porções e entradas deliciosas']);
+        $catDrinks = Category::create(['name' => 'Bebidas', 'description' => 'Sodas, sucos e refrigerantes artesanais']);
+        $catDesserts = Category::create(['name' => 'Sobremesas', 'description' => 'Doces e finalizações irresistíveis']);
 
+        // Produto 1: Smash ELO Bacon Duplo
         $burger = Product::create([
             'category_id' => $catBurgers->id,
-            'name' => 'Cheeseburger Duplo',
-            'description' => 'Pão artesanal, 2x carnes 180g e queijo cheddar fatiado.',
-            'price' => 38.90,
+            'name' => 'Smash ELO Bacon Duplo',
+            'description' => 'Dois burgers de 90g, muito cheddar, bacon crocante e molho da casa.',
+            'price' => 36.90,
             'available' => true,
+            'image_url' => 'https://images.unsplash.com/photo-1586190848861-99aa4a171e90?auto=format&fit=crop&w=600&q=80',
         ]);
-
-        // Vincular Ficha Técnica do Cheeseburger
         $burger->ingredients()->attach([
             $bun->id => ['qty_used' => 1.000],
-            $meat->id => ['qty_used' => 0.360], // 360g de carne
-            $cheese->id => ['qty_used' => 0.050], // 50g de queijo
+            $meat->id => ['qty_used' => 0.180],
+            $cheese->id => ['qty_used' => 0.050],
         ]);
 
+        // Produto 2: Burger Gorgonzola & Mel
+        $burgerGorgonzola = Product::create([
+            'category_id' => $catBurgers->id,
+            'name' => 'Burger Gorgonzola & Mel',
+            'description' => 'Blend bovino 180g grelhado na brasa, creme de gorgonzola dolce, fios de mel silvestre e rúcula fresca no brioche.',
+            'price' => 42.00,
+            'available' => true,
+            'image_url' => 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80',
+        ]);
+        $burgerGorgonzola->ingredients()->attach([
+            $bun->id => ['qty_used' => 1.000],
+            $meat->id => ['qty_used' => 0.180],
+        ]);
+
+        // Produto 3: Batata Rústica com Alecrim
         $portion = Product::create([
             'category_id' => $catSides->id,
-            'name' => 'Batata Frita Rustica',
-            'description' => 'Batata frita crocante com alecrim e maionese da casa.',
-            'price' => 22.00,
+            'name' => 'Batata Rústica com Alecrim',
+            'description' => 'Batatas crocantes temperadas com alecrim e ervas finas.',
+            'price' => 24.50,
             'available' => true,
+            'image_url' => 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?auto=format&fit=crop&w=600&q=80',
         ]);
-
         $portion->ingredients()->attach([
-            $fries->id => ['qty_used' => 0.300], // 300g de batata
+            $fries->id => ['qty_used' => 0.300],
         ]);
 
+        // Produto 4: Soda Italiana de Maracujá
         $drink = Product::create([
             'category_id' => $catDrinks->id,
-            'name' => 'Coca-Cola Zero 350ml',
-            'description' => 'Lata trincando de gelada',
-            'price' => 7.50,
+            'name' => 'Soda Italiana de Maracujá',
+            'description' => 'Xarope artesanal de maracujá, água gaseificada e muito sabor.',
+            'price' => 16.00,
             'available' => true,
+            'image_url' => 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?auto=format&fit=crop&w=600&q=80',
         ]);
-
         $drink->ingredients()->attach([
             $coke->id => ['qty_used' => 1.000],
+        ]);
+
+        // Produto 5: Pudim de Leite na Lata
+        Product::create([
+            'category_id' => $catDesserts->id,
+            'name' => 'Pudim de Leite na Lata',
+            'description' => 'Receita tradicional, cremosa sem igual.',
+            'price' => 18.00,
+            'available' => true,
+            'image_url' => 'https://images.unsplash.com/photo-1587314168485-3236d6710814?auto=format&fit=crop&w=600&q=80',
         ]);
     }
 }

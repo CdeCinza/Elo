@@ -34,11 +34,11 @@ class DatabaseSeederTest extends TestCase
         $this->assertEquals(5, Role::count());
         $this->assertEquals(5, User::count());
         $this->assertEquals(10, RestaurantTable::count());
-        $this->assertEquals(3, Category::count());
-        $this->assertEquals(3, Product::count());
+        $this->assertEquals(4, Category::count());
+        $this->assertEquals(5, Product::count());
         $this->assertEquals(5, Ingredient::count());
 
-        $burger = Product::where('name', 'Cheeseburger Duplo')->first();
+        $burger = Product::where('name', 'Smash ELO Bacon Duplo')->first();
         $this->assertNotNull($burger);
         $this->assertCount(3, $burger->ingredients);
     }

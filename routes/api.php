@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CategoryController;
+use App\Http\Controllers\Api\CustomerSessionController;
 use App\Http\Controllers\Api\IngredientController;
 use App\Http\Controllers\Api\OrderController;
+use App\Http\Controllers\Api\PosKdsController;
 use App\Http\Controllers\Api\ProductController;
 use App\Http\Controllers\Api\TableController;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +25,23 @@ Route::get('/v1/categories/{category}', [CategoryController::class, 'show']);
 
 Route::get('/v1/products', [ProductController::class, 'index']);
 Route::get('/v1/products/{product}', [ProductController::class, 'show']);
+
+// Rotas Públicas do Cliente na Mesa (QR Code Salão)
+Route::get('/v1/customer/table/{tableNumber}', [CustomerSessionController::class, 'getTable']);
+Route::post('/v1/customer/table/{tableNumber}/check-in', [PosKdsController::class, 'checkInTable']);
+Route::post('/v1/customer/table/{tableNumber}/call-waiter', [PosKdsController::class, 'callWaiter']);
+Route::post('/v1/customer/table/{tableNumber}/request-bill', [PosKdsController::class, 'requestBill']);
+Route::post('/v1/customer/table/{tableNumber}/order', [CustomerSessionController::class, 'placeOrder']);
+
+// Rotas Operacionais de Frente de Caixa (POS)
+Route::get('/v1/pos/tables', [PosKdsController::class, 'getTables']);
+Route::post('/v1/pos/tables/{tableNumber}/open', [PosKdsController::class, 'openTable']);
+Route::post('/v1/pos/tables/{tableNumber}/items', [PosKdsController::class, 'addItemToTable']);
+Route::post('/v1/pos/tables/{tableNumber}/close', [PosKdsController::class, 'closeTable']);
+
+// Rotas Operacionais da Cozinha (KDS)
+Route::get('/v1/kds/orders', [PosKdsController::class, 'getKitchenOrders']);
+Route::patch('/v1/kds/orders/{order}/status', [PosKdsController::class, 'updateOrderStatus']);
 
 // Rotas Protegidas por Autenticação (Sanctum)
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
