@@ -33,16 +33,24 @@ export const toast = {
   show: (type: ToastType, message: string, title?: string, duration?: number) => {
     listeners.forEach((listener) => listener({ type, message, title, duration }));
   },
-  success: (message: string, title?: string, duration = 4000) => {
+  success: (titleOrMessage: string, description?: string, duration = 4000) => {
+    const title = description ? titleOrMessage : undefined;
+    const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'success', message, title, duration }));
   },
-  error: (message: string, title?: string, duration = 5000) => {
+  error: (titleOrMessage: string, description?: string, duration = 5000) => {
+    const title = description ? titleOrMessage : undefined;
+    const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'error', message, title, duration }));
   },
-  warning: (message: string, title?: string, duration = 4500) => {
+  warning: (titleOrMessage: string, description?: string, duration = 4500) => {
+    const title = description ? titleOrMessage : undefined;
+    const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'warning', message, title, duration }));
   },
-  info: (message: string, title?: string, duration = 4000) => {
+  info: (titleOrMessage: string, description?: string, duration = 4000) => {
+    const title = description ? titleOrMessage : undefined;
+    const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'info', message, title, duration }));
   },
 };
@@ -163,8 +171,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
 export function useToast() {
   const context = useContext(ToastContext);
-  if (!context) {
-    return toast;
-  }
-  return context;
+  return {
+    ...(context || {}),
+    toast,
+    success: toast.success,
+    error: toast.error,
+    warning: toast.warning,
+    info: toast.info,
+  };
 }
