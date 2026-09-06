@@ -35,9 +35,15 @@ Route::post('/v1/customer/table/{tableNumber}/order', [CustomerSessionController
 
 // Rotas Operacionais de Frente de Caixa (POS)
 Route::get('/v1/pos/tables', [PosKdsController::class, 'getTables']);
+Route::post('/v1/pos/tables', [PosKdsController::class, 'storeTable']);
+Route::put('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'updateTable']);
+Route::delete('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'deleteTable']);
+Route::post('/v1/pos/tables/seed-defaults', [PosKdsController::class, 'seedDefaultTables']);
 Route::post('/v1/pos/tables/{tableNumber}/open', [PosKdsController::class, 'openTable']);
 Route::post('/v1/pos/tables/{tableNumber}/items', [PosKdsController::class, 'addItemToTable']);
 Route::post('/v1/pos/tables/{tableNumber}/close', [PosKdsController::class, 'closeTable']);
+Route::post('/v1/pos/tables/{tableNumber}/clear-waiter', [PosKdsController::class, 'clearWaiterCall']);
+Route::post('/v1/pos/tables/{tableNumber}/reset', [PosKdsController::class, 'resetTable']);
 
 // Rotas Operacionais da Cozinha (KDS)
 Route::get('/v1/kds/orders', [PosKdsController::class, 'getKitchenOrders']);

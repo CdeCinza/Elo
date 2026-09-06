@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   description: "O melhor da nossa cozinha, na sua mesa.",
 };
 
+import { ToastProvider } from "@/components/ui/ToastProvider";
+
 export default function RootLayout({
   children,
 }: {
@@ -27,7 +29,9 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${serifFont.variable} ${sansFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className="min-h-full flex flex-col font-sans">
+        <ToastProvider>{children}</ToastProvider>
+      </body>
     </html>
   );
 }

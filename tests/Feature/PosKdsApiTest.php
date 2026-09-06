@@ -158,4 +158,53 @@ class PosKdsApiTest extends TestCase
 
         $this->assertEquals('preparing', $order->fresh()->status);
     }
+
+    public function test_pos_can_create_update_and_delete_table(): void
+    {
+        // 1. Cria nova mesa
+        $createResponse = $this->postJson('/api/v1/pos/tables', [
+            'number' => '15',
+            'capacity' => 6,
+        ]);
+
+        $createResponse->assertCreated()
+            ->assertJsonPath('table.capacity', 6)
+            ->assertJsonPath('table.status', 'free');
+
+        $this->assertDatabaseHas('restaurant_tables', [
+            'number' => 'Mesa 15',
+            'capacity' => 6,
+        ]);
+
+        // 2. Atualiza capacidade
+        $updateResponse = $this->putJson('/api/v1/pos/tables/15', [
+            'capacity' => 8,
+        ]);
+
+        $updateResponse->assertOk()
+            ->assertJsonPath('table.capacity', 8);
+
+        // 3. Exclui mesa
+        $deleteResponse = $this->deleteJson('/api/v1/pos/tables/15');
+        $deleteResponse->assertOk();
+
+        $this->assertDatabaseMissing('restaurant_tables', [
+            'number' => 'Mesa 15',
+        ]);
+    }
+
+    public function test_pos_can_clear_waiter_call_and_reset_table(): void
+    {
+        // Chama garçom
+        $this->postJson('/api/v1/customer/table/01/call-waiter');
+
+        // Limpa chamado via POS
+        $clearResponse = $this->postJson('/api/v1/pos/tables/01/clear-waiter');
+        $clearResponse->assertOk();
+
+        // Reseta mesa para livre
+        $resetResponse = $this->postJson('/api/v1/pos/tables/01/reset');
+        $resetResponse->assertOk();
+        $this->assertEquals('free', $this->table->fresh()->status);
+    }
 }

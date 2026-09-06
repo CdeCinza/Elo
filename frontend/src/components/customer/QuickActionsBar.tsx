@@ -3,6 +3,7 @@
 import React from 'react';
 import { Bell, Receipt, Wifi, HelpCircle } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from '@/components/ui/ToastProvider';
 
 interface QuickActionsBarProps {
   tableId: string | number;
@@ -19,7 +20,7 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
         {/* Item 1: Chamar Garçom */}
         <button
           onClick={onCallWaiter}
-          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group"
+          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group cursor-pointer"
         >
           <div className="w-9 h-9 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center text-[#C84E1F] shrink-0">
             <Bell className="w-4 h-4" />
@@ -52,9 +53,9 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
         <button
           onClick={() => {
             navigator.clipboard?.writeText('EloRestaurante2026');
-            alert('Senha do Wi-Fi copiada para a área de transferência: EloRestaurante2026');
+            toast.success('Senha do Wi-Fi copiada para a área de transferência: EloRestaurante2026', 'Wi-Fi Conectado');
           }}
-          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group"
+          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group cursor-pointer"
         >
           <div className="w-9 h-9 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center text-[#191817] shrink-0">
             <Wifi className="w-4 h-4" />
@@ -69,8 +70,8 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
 
         {/* Item 4: Dúvidas */}
         <button
-          onClick={() => alert('Dúvidas com seu pedido? Você pode chamar o garçom a qualquer momento através do botão ao lado.')}
-          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group"
+          onClick={() => toast.info('Dúvidas com seu pedido? Você pode chamar o garçom a qualquer momento pelo botão acima.', 'Ajuda do Salão')}
+          className="flex items-center gap-3 p-3 hover:bg-[#F9F8F6] rounded-xl transition-colors text-left group cursor-pointer"
         >
           <div className="w-9 h-9 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center text-[#191817] shrink-0">
             <HelpCircle className="w-4 h-4" />

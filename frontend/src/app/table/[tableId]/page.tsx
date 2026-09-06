@@ -10,6 +10,7 @@ import { HouseFavoritesSection } from '@/components/customer/HouseFavoritesSecti
 import { ClosingExperienceBanner } from '@/components/customer/ClosingExperienceBanner';
 import { CheckCircle2, User, Smartphone, Utensils, Sparkles } from 'lucide-react';
 import { useCustomerSession, Product } from '@/hooks/useCustomerSession';
+import { toast } from '@/components/ui/ToastProvider';
 
 export default function TableHomePage() {
   const params = useParams();
@@ -131,9 +132,9 @@ export default function TableHomePage() {
               onAddToCart={async (product) => {
                 const res = await sendOrder([{ product_id: product.id, quantity: 1 }]);
                 if (res.success) {
-                  alert(`✓ ${product.name} adicionado e enviado para a cozinha!`);
+                  toast.success(`${product.name} adicionado e enviado para a cozinha!`, 'Pedido Realizado');
                 } else {
-                  alert(`Aviso: ${res.message}`);
+                  toast.warning(res.message || 'Não foi possível enviar o item.', 'Atenção');
                 }
               }}
             />

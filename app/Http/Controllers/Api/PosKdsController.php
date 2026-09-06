@@ -386,4 +386,184 @@ class PosKdsController extends Controller
             ],
         ]);
     }
+
+    /**
+     * 10. Cadastra uma nova mesa no salão via Frente de Caixa / Admin
+     */
+    public function storeTable(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'number' => 'required|string|max:50',
+            'capacity' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $cleanNumber = preg_replace('/[^0-9]/', '', $validated['number']);
+        if ($cleanNumber !== '') {
+            $intNumber = (int) $cleanNumber;
+            $formattedTwoDigits = sprintf('%02d', $intNumber);
+            $formattedName = "Mesa {$cleanNumber}";
+
+            $alreadyExists = RestaurantTable::where('number', $formattedName)
+                ->orWhere('number', "Mesa {$intNumber}")
+                ->orWhere('number', "Mesa {$formattedTwoDigits}")
+                ->orWhere('number', (string) $intNumber)
+                ->orWhere('number', $formattedTwoDigits)
+                ->orWhere('number', $validated['number'])
+                ->exists();
+        } else {
+            $formattedName = trim($validated['number']);
+            $alreadyExists = RestaurantTable::where('number', $formattedName)->exists();
+        }
+
+        if ($alreadyExists) {
+            return response()->json([
+                'message' => "Já existe uma mesa cadastrada com a numeração '{$formattedName}'.",
+            ], 422);
+        }
+
+        $table = RestaurantTable::create([
+            'number' => $formattedName,
+            'capacity' => $validated['capacity'] ?? 4,
+            'status' => 'free',
+        ]);
+
+        return response()->json([
+            'message' => "{$table->number} cadastrada com sucesso!",
+            'table' => [
+                'id' => $table->id,
+                'number' => $this->normalizeNumber($table->number),
+                'raw_number' => $table->number,
+                'capacity' => (int) $table->capacity,
+                'status' => $table->status,
+                'waiter_called' => false,
+                'waiter' => 'Garçom Principal',
+                'opened_at' => null,
+                'total' => 0.0,
+                'subtotal' => 0.0,
+                'items_count' => 0,
+                'items' => [],
+            ],
+        ], 201);
+    }
+
+    /**
+     * 11. Atualiza dados de uma mesa (capacidade ou numeração)
+     */
+    public function updateTable(Request $request, string $tableNumber): JsonResponse
+    {
+        $table = $this->findTable($tableNumber);
+
+        $validated = $request->validate([
+            'number' => 'nullable|string|max:50',
+            'capacity' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        if (! empty($validated['number'])) {
+            $cleanNumber = preg_replace('/[^0-9]/', '', $validated['number']);
+            $formattedName = $cleanNumber !== '' ? "Mesa {$cleanNumber}" : trim($validated['number']);
+            $table->number = $formattedName;
+        }
+
+        if (isset($validated['capacity'])) {
+            $table->capacity = (int) $validated['capacity'];
+        }
+
+        $table->save();
+
+        return response()->json([
+            'message' => "Mesa {$this->normalizeNumber($table->number)} atualizada com sucesso.",
+            'table' => [
+                'id' => $table->id,
+                'number' => $this->normalizeNumber($table->number),
+                'raw_number' => $table->number,
+                'capacity' => $table->capacity,
+                'status' => $table->status,
+            ],
+        ]);
+    }
+
+    /**
+     * 12. Exclui uma mesa livre do salão
+     */
+    public function deleteTable(Request $request, string $tableNumber): JsonResponse
+    {
+        $table = $this->findTable($tableNumber);
+
+        if ($table->status !== 'free') {
+            return response()->json([
+                'message' => 'Não é possível excluir uma mesa em atendimento ou com conta em aberto.',
+            ], 422);
+        }
+
+        if ($table->activeOrder()->exists()) {
+            return response()->json([
+                'message' => 'Esta mesa possui um pedido ativo em aberto.',
+            ], 422);
+        }
+
+        $tableNumberFormatted = $this->normalizeNumber($table->number);
+        $table->delete();
+
+        return response()->json([
+            'message' => "Mesa {$tableNumberFormatted} excluída com sucesso do salão.",
+        ]);
+    }
+
+    /**
+     * 13. Limpa notificação de chamado de garçom atendido
+     */
+    public function clearWaiterCall(Request $request, string $tableNumber): JsonResponse
+    {
+        $table = $this->findTable($tableNumber);
+
+        ActivityLog::where('action', 'waiter_called')
+            ->where('subject_type', RestaurantTable::class)
+            ->where('subject_id', $table->id)
+            ->delete();
+
+        return response()->json([
+            'message' => "Chamado do garçom para a Mesa {$this->normalizeNumber($table->number)} atendido.",
+        ]);
+    }
+
+    /**
+     * 14. Força a liberação e limpeza de uma mesa pelo administrador
+     */
+    public function resetTable(Request $request, string $tableNumber): JsonResponse
+    {
+        $table = $this->findTable($tableNumber);
+
+        if ($table->activeOrder) {
+            $table->activeOrder->update(['status' => 'canceled']);
+        }
+
+        $table->update(['status' => 'free']);
+
+        ActivityLog::where('subject_type', RestaurantTable::class)
+            ->where('subject_id', $table->id)
+            ->delete();
+
+        return response()->json([
+            'message' => "Mesa {$this->normalizeNumber($table->number)} liberada com sucesso pelo operador.",
+        ]);
+    }
+
+    /**
+     * 15. Cria mesas padrão (01 a 10) caso o banco esteja vazio
+     */
+    public function seedDefaultTables(Request $request): JsonResponse
+    {
+        if (RestaurantTable::count() === 0) {
+            for ($i = 1; $i <= 10; $i++) {
+                $capacity = $i <= 4 ? 2 : ($i <= 8 ? 4 : 6);
+                RestaurantTable::create([
+                    'number' => "Mesa {$i}",
+                    'capacity' => $capacity,
+                    'status' => 'free',
+                ]);
+            }
+        }
+
+        return $this->getTables($request);
+    }
 }

@@ -15,6 +15,7 @@ import {
   QrCode,
 } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from '@/components/ui/ToastProvider';
 
 interface OrderItem {
   id: number;
@@ -321,10 +322,10 @@ export default function OrderTrackingPage() {
             <div className="space-y-2">
               <button
                 onClick={() => {
-                  alert('Chave PIX copiada para a área de transferência!');
+                  toast.success('Chave PIX copiada para a área de transferência!', 'Código PIX');
                   setShowPaymentModal(false);
                 }}
-                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors"
+                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer"
               >
                 Copiar código PIX
               </button>

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { SalonHeader } from '@/components/customer/SalonHeader';
 import { Search, Plus, Clock, ArrowLeft, Check, Flame, ShoppingBag } from 'lucide-react';
 import Link from 'next/link';
+import { toast } from '@/components/ui/ToastProvider';
 
 interface Product {
   id: number;
@@ -155,10 +156,10 @@ export default function MenuPage() {
 
     setSubmitting(false);
     if (res.success) {
-      alert(`✓ ${activeProduct.name} enviado para a cozinha!`);
+      toast.success(`${activeProduct.name} enviado para a cozinha!`, 'Pedido Realizado');
       setActiveProduct(null);
     } else {
-      alert(`Aviso: ${res.message}`);
+      toast.warning(res.message || 'Não foi possível enviar o item.', 'Atenção');
     }
   };
 
