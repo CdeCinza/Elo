@@ -20,12 +20,14 @@ export default function TableHomePage() {
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
   const [startingSession, setStartingSession] = useState(false);
+  const [sessionStarted, setSessionStarted] = useState(false);
 
-  // Mesa é considerada livre se status for 'free' e não houver itens pedidos
-  const isTableFree = (!table || table.status === 'free') && (!table?.active_order || table.active_order.items.length === 0);
+  // Mesa é considerada livre se status for 'free' e não houver itens pedidos e a sessão local ainda não foi iniciada
+  const isTableFree = (!sessionStarted) && (!table || table.status === 'free') && (!table?.active_order || table.active_order.items.length === 0);
 
   const handleStartAttendance = async () => {
     setStartingSession(true);
+    setSessionStarted(true);
     await checkIn();
     setStartingSession(false);
     setShowPreferenceModal(true);
@@ -35,6 +37,7 @@ export default function TableHomePage() {
     await callWaiter();
     setWaiterCalled(true);
     setShowPreferenceModal(false);
+    setSessionStarted(true);
     setTimeout(() => {
       setWaiterCalled(false);
     }, 6000);
@@ -42,6 +45,7 @@ export default function TableHomePage() {
 
   const handleChooseTablet = () => {
     setShowPreferenceModal(false);
+    setSessionStarted(true);
   };
 
   const dynamicFavorites = products.slice(0, 4).map((p: Product) => ({
@@ -85,7 +89,7 @@ export default function TableHomePage() {
         {/* 1. TELA DE CHEGADA: Se a mesa estiver livre e o cliente acabou de sentar */}
         {isTableFree && !showPreferenceModal ? (
           <main className="max-w-2xl mx-auto px-6 py-16 text-center flex flex-col items-center justify-center min-h-[70vh]">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#C84E1F] bg-[#C84E1F]/10 px-3 py-1 rounded-full mb-4">
+            <span className="text-xs font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/10 px-3 py-1 rounded-full mb-4">
               Atendimento Digital • ELO
             </span>
 
@@ -106,7 +110,7 @@ export default function TableHomePage() {
               <span>{startingSession ? 'Iniciando atendimento...' : 'Iniciar atendimento • Estou na mesa'}</span>
             </button>
 
-            <p className="text-xs text-[#A19A91] mt-6">
+            <p className="text-xs text-[#57534E] mt-6">
               Ao tocar, nossa equipe no salão saberá que você chegou à mesa.
             </p>
           </main>
@@ -150,7 +154,7 @@ export default function TableHomePage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-[#F9F8F6] rounded-3xl border border-[#EAE6E1] p-6 sm:p-8 shadow-2xl text-left space-y-6">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#C84E1F] bg-[#C84E1F]/10 px-2.5 py-0.5 rounded-md">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/15 px-2.5 py-0.5 rounded-md">
                 Mesa {tableId} • Check-in realizado
               </span>
               <h2 className="text-2xl font-serif font-bold text-[#191817] mt-2">
@@ -178,7 +182,7 @@ export default function TableHomePage() {
                     Um integrante da nossa equipe virá até a mesa para apresentar os destaques e anotar o pedido.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold text-[#C84E1F] mt-4 block">
+                <span className="text-[11px] font-semibold text-[#9E3712] mt-4 block">
                   Solicitar equipe →
                 </span>
               </button>
@@ -199,7 +203,7 @@ export default function TableHomePage() {
                     Navegue pelo cardápio completo, veja fotos e envie os pedidos diretamente para a cozinha com rapidez.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold text-[#C84E1F] mt-4 block">
+                <span className="text-[11px] font-semibold text-[#9E3712] mt-4 block">
                   Abrir cardápio digital →
                 </span>
               </button>
@@ -208,7 +212,7 @@ export default function TableHomePage() {
             <div className="pt-2 text-center">
               <button
                 onClick={() => setShowPreferenceModal(false)}
-                className="text-xs text-[#A19A91] hover:text-[#191817] transition-colors underline cursor-pointer"
+                className="text-xs text-[#57534E] hover:text-[#191817] transition-colors underline cursor-pointer"
               >
                 Explorar o cardápio sem definir preferência agora
               </button>

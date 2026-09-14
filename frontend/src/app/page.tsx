@@ -17,9 +17,17 @@ export default function RootHomePage() {
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-[#6E6760]">
-            <span className="w-2 h-2 rounded-full bg-[#2D6A4F]" />
-            <span>Sistema conectado</span>
+          <div className="flex items-center gap-4 text-xs text-[#6E6760]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[#2D6A4F]" />
+              <span>Sistema conectado</span>
+            </div>
+            <Link
+              href="/login"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#EAE6E1] bg-white hover:border-[#191817]/40 text-[#191817] font-medium transition-colors shadow-2xs"
+            >
+              <span>Acesso da Equipe</span>
+            </Link>
           </div>
         </div>
       </header>
@@ -40,16 +48,16 @@ export default function RootHomePage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           {/* Card Principal: Experiência do Cliente na Mesa (7 cols) */}
           <Link
-            href="/table/08"
+            href="/table"
             className="lg:col-span-7 group bg-white rounded-2xl border border-[#EAE6E1] p-8 sm:p-10 flex flex-col justify-between hover:border-[#191817]/40 transition-colors"
           >
             <div>
               <div className="flex items-center justify-between mb-8">
-                <div className="w-12 h-12 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center text-[#191817]">
+                <div className="w-12 h-12 rounded-2xl bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center text-[#191817]">
                   <Smartphone className="w-5 h-5 text-[#C84E1F]" />
                 </div>
                 <span className="text-xs text-[#6E6760] px-3 py-1 rounded-full bg-[#F2EFEA]">
-                  Dispositivo do cliente
+                  Dispositivo do cliente / Totem
                 </span>
               </div>
 
@@ -57,13 +65,13 @@ export default function RootHomePage() {
                 Cardápio digital na mesa
               </h2>
               <p className="text-sm text-[#6E6760] leading-relaxed mb-8 max-w-lg">
-                Visão aberta via QR Code pelo cliente sentado no salão. Permite fazer pedidos direto para a cozinha, chamar a equipe de atendimento, consultar o consumo em tempo real e dividir a conta.
+                Visão do tablet na mesa do salão ou QR Code. Permite fazer pedidos direto para a cozinha, chamar a equipe de atendimento, consultar o consumo em tempo real e solicitar a conta.
               </p>
             </div>
 
             <div className="pt-6 border-t border-[#F2EFEA] flex items-center justify-between">
               <span className="text-xs font-semibold text-[#191817]">
-                Acessar Mesa 08 (Demonstração)
+                Abrir terminal do tablet / mesa
               </span>
               <div className="w-8 h-8 rounded-full border border-[#EAE6E1] group-hover:border-[#191817] group-hover:bg-[#191817] group-hover:text-white flex items-center justify-center transition-colors text-[#191817]">
                 <ArrowUpRight className="w-4 h-4" />

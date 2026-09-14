@@ -163,9 +163,23 @@ export default function MenuPage() {
     }
   };
 
-  const categoryNames = ['Todos', ...categories.map((c) => c.name)];
+  const availableProducts = products && products.length > 0 ? products : MENU_PRODUCTS.map((p) => ({
+    id: p.id,
+    category_id: 1,
+    category_name: p.category,
+    name: p.name,
+    description: p.description,
+    price: p.price,
+    available: true,
+    image_url: p.image,
+    customizations: p.customizations,
+  }));
 
-  const filteredProducts = products.filter((product) => {
+  const categoryNames = categories && categories.length > 0
+    ? ['Todos', ...categories.map((c) => c.name)]
+    : CATEGORIES;
+
+  const filteredProducts = availableProducts.filter((product: any) => {
     const matchesCategory =
       selectedCategory === 'Todos' || product.category_name === selectedCategory;
     const matchesSearch =
@@ -173,6 +187,13 @@ export default function MenuPage() {
       (product.description && product.description.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
+
+  const extrasTotal = activeProduct?.customizations?.extras
+    ? activeProduct.customizations.extras
+        .filter((e: { name: string; price: number }) => selectedExtras.includes(e.name))
+        .reduce((sum: number, e: { name: string; price: number }) => sum + e.price, 0)
+    : 0;
+  const currentModalTotal = (Number(activeProduct?.price) || 0) + extrasTotal;
 
   const activeItemsCount = table?.active_order?.items?.length || 0;
 
@@ -275,7 +296,8 @@ export default function MenuPage() {
                 />
                 <button
                   type="button"
-                  className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white flex items-center justify-center transition-colors"
+                  aria-label={`Personalizar e pedir ${product.name}`}
+                  className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white flex items-center justify-center transition-colors shadow-sm"
                   title="Personalizar e adicionar"
                 >
                   <Plus className="w-4 h-4" />
@@ -320,7 +342,8 @@ export default function MenuPage() {
                 </div>
                 <button
                   onClick={() => setActiveProduct(null)}
-                  className="w-8 h-8 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] flex items-center justify-center text-sm font-semibold transition-colors"
+                  aria-label="Fechar modal de personalização"
+                  className="w-8 h-8 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer"
                 >
                   ✕
                 </button>
@@ -339,7 +362,7 @@ export default function MenuPage() {
                       <button
                         key={meat}
                         onClick={() => setSelectedMeat(meat)}
-                        className={`p-2.5 rounded-xl text-xs font-medium border text-left flex items-center justify-between transition-colors ${
+                        className={`p-2.5 rounded-xl text-xs font-medium border text-left flex items-center justify-between transition-colors cursor-pointer ${
                           selectedMeat === meat
                             ? 'bg-[#C84E1F]/10 border-[#C84E1F] text-[#191817]'
                             : 'bg-white border-[#EAE6E1] text-[#6E6760] hover:border-[#191817]/30'
@@ -366,6 +389,15 @@ export default function MenuPage() {
                         <div
                           key={extra.name}
                           onClick={() => handleToggleExtra(extra.name)}
+                          role="checkbox"
+                          aria-checked={isChecked}
+                          tabIndex={0}
+                          onKeyDown={(e) => {
+                            if (e.key === ' ' || e.key === 'Enter') {
+                              e.preventDefault();
+                              handleToggleExtra(extra.name);
+                            }
+                          }}
                           className={`p-2.5 rounded-xl border flex items-center justify-between cursor-pointer transition-colors ${
                             isChecked
                               ? 'bg-[#C84E1F]/10 border-[#C84E1F]'
@@ -412,11 +444,11 @@ export default function MenuPage() {
             <button
               onClick={handleAddToCart}
               disabled={submitting}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full py-3.5 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-md shadow-[#C84E1F]/20"
             >
               <span>{submitting ? 'Enviando à cozinha...' : 'Enviar à cozinha'}</span>
               <span>•</span>
-              <span>R$ {Number(activeProduct.price).toFixed(2).replace('.', ',')}</span>
+              <span>R$ {currentModalTotal.toFixed(2).replace('.', ',')}</span>
             </button>
           </div>
         </div>

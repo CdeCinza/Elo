@@ -320,10 +320,14 @@ class PosKdsController extends Controller
         ]);
 
         $newSubtotal = (float) $order->items()->sum('subtotal');
-        $order->update([
+        $orderUpdate = [
             'subtotal' => $newSubtotal,
             'total' => $newSubtotal,
-        ]);
+        ];
+        if ($order->status === 'ready' || $order->status === 'delivered') {
+            $orderUpdate['status'] = 'pending';
+        }
+        $order->update($orderUpdate);
 
         $table->update(['status' => 'occupied']);
 

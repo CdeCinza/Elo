@@ -73,7 +73,7 @@ export default function LoginPage() {
           <span className="w-2 h-2 rounded-full bg-emerald-600" />
           <span className="font-mono text-[11px] font-medium">Sistema Operacional</span>
         </div>
-        <span className="font-mono text-[11px] text-[#A8A199]">v2.4.0</span>
+        <span className="font-mono text-[11px] text-[#57534E]">v2.4.0</span>
       </header>
 
       {/* Main Authentication Card */}
@@ -133,8 +133,9 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#78716A] hover:text-[#191817] p-1 cursor-pointer transition-colors"
+                  aria-label={showPassword ? 'Ocultar senha' : 'Ver senha'}
                   title={showPassword ? 'Ocultar senha' : 'Ver senha'}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#78716A] hover:text-[#191817] p-1 cursor-pointer transition-colors"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -171,7 +172,7 @@ export default function LoginPage() {
       </div>
 
       {/* Footer System Status */}
-      <footer className="w-full max-w-sm flex items-center justify-center gap-1.5 text-[11px] text-[#A8A199]">
+      <footer className="w-full max-w-sm flex items-center justify-center gap-1.5 text-[11px] text-[#57534E]">
         <span>ELO Platform &copy; {new Date().getFullYear()}</span>
         <span>•</span>
         <span>Acesso Seguro</span>

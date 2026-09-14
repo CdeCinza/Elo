@@ -10,6 +10,7 @@ use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -18,31 +19,80 @@ use Illuminate\Support\Facades\DB;
 
 class CustomerSessionController extends Controller
 {
-    /**
-     * Retorna os dados da mesa para o cliente no salão (QR Code)
-     */
-    public function getTable(string $tableNumber): JsonResponse
+    private function getRestaurantId(Request $request): int
+    {
+        if ($request->header('X-Restaurant-Id')) {
+            return (int) $request->header('X-Restaurant-Id');
+        }
+        if ($request->query('restaurant_id')) {
+            return (int) $request->query('restaurant_id');
+        }
+        if ($request->user()?->restaurant_id) {
+            return (int) $request->user()->restaurant_id;
+        }
+
+        $restaurant = Restaurant::first();
+        if (! $restaurant) {
+            $restaurant = Restaurant::create([
+                'name' => 'Restaurante Principal',
+                'slug' => 'restaurante-principal',
+                'status' => 'active',
+            ]);
+        }
+
+        return (int) $restaurant->id;
+    }
+
+    private function findTable(string $tableNumber, ?int $restaurantId = null): RestaurantTable
     {
         $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
         $intNumber = (int) $cleanNumber;
-        $twoDigits = sprintf('%02d', $intNumber);
+        $formattedTwoDigits = sprintf('%02d', $intNumber);
 
-        $table = RestaurantTable::with(['activeOrder.items.product'])
-            ->where('number', $tableNumber)
-            ->orWhere('number', "Mesa {$tableNumber}")
-            ->orWhere('number', "Mesa {$cleanNumber}")
-            ->orWhere('number', "Mesa {$intNumber}")
-            ->orWhere('number', "Mesa {$twoDigits}")
-            ->orWhere('id', $tableNumber)
-            ->first();
+        $restId = $restaurantId;
+        if (! $restId) {
+            $restaurant = Restaurant::first() ?? Restaurant::create([
+                'name' => 'Restaurante Principal',
+                'slug' => 'restaurante-principal',
+                'status' => 'active',
+            ]);
+            $restId = (int) $restaurant->id;
+        }
+
+        $query = RestaurantTable::where('restaurant_id', $restId)
+            ->where(function ($q) use ($tableNumber, $cleanNumber, $formattedTwoDigits, $intNumber) {
+                $q->where('number', $tableNumber)
+                    ->orWhere('number', "Mesa {$cleanNumber}")
+                    ->orWhere('number', "Mesa {$formattedTwoDigits}")
+                    ->orWhere('number', "Mesa {$intNumber}")
+                    ->orWhere('number', (string) $intNumber)
+                    ->orWhere('number', $formattedTwoDigits)
+                    ->orWhere('id', $tableNumber);
+            });
+
+        $table = $query->first();
 
         if (! $table) {
             $table = RestaurantTable::firstOrCreate(
-                ['number' => "Mesa {$cleanNumber}"],
+                [
+                    'restaurant_id' => $restId,
+                    'number' => "Mesa {$intNumber}",
+                ],
                 ['capacity' => 4, 'status' => 'free']
             );
-            $table->load(['activeOrder.items.product']);
         }
+
+        return $table;
+    }
+
+    /**
+     * Retorna os dados da mesa para o cliente no salão (QR Code)
+     */
+    public function getTable(Request $request, string $tableNumber): JsonResponse
+    {
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
+        $table->load(['activeOrder.items.product']);
 
         return response()->json([
             'table' => new TableResource($table),
@@ -61,17 +111,8 @@ class CustomerSessionController extends Controller
             'items.*.notes' => 'nullable|string|max:255',
         ]);
 
-        $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
-        $intNumber = (int) $cleanNumber;
-        $twoDigits = sprintf('%02d', $intNumber);
-
-        $table = RestaurantTable::where('number', $tableNumber)
-            ->orWhere('number', "Mesa {$tableNumber}")
-            ->orWhere('number', "Mesa {$cleanNumber}")
-            ->orWhere('number', "Mesa {$intNumber}")
-            ->orWhere('number', "Mesa {$twoDigits}")
-            ->orWhere('id', $tableNumber)
-            ->firstOrFail();
+        $restId = $this->getRestaurantId($request);
+        $table = $this->findTable($tableNumber, $restId);
 
         // Pega o atendente/garçom padrão ou cria um usuário sistema para a comanda
         $defaultUser = User::first() ?? User::factory()->create();
@@ -80,6 +121,7 @@ class CustomerSessionController extends Controller
             $order = DB::transaction(function () use ($table, $defaultUser, $request) {
                 // Se a mesa já tiver comanda ativa, anexa a ela; senão cria uma nova
                 $order = $table->activeOrder ?? Order::create([
+                    'restaurant_id' => $table->restaurant_id ?? $defaultUser->restaurant_id,
                     'table_id' => $table->id,
                     'user_id' => $defaultUser->id,
                     'type' => 'dine_in',
@@ -108,10 +150,14 @@ class CustomerSessionController extends Controller
                 }
 
                 $newSubtotal = (float) $order->items()->sum('subtotal');
-                $order->update([
+                $orderUpdate = [
                     'subtotal' => $newSubtotal,
                     'total' => $newSubtotal,
-                ]);
+                ];
+                if ($order->status === 'ready' || $order->status === 'delivered') {
+                    $orderUpdate['status'] = 'pending';
+                }
+                $order->update($orderUpdate);
 
                 $table->update(['status' => 'occupied']);
 
