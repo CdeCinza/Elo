@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\IngredientController;
 use App\Http\Controllers\Api\OrderController;
 use App\Http\Controllers\Api\PosKdsController;
 use App\Http\Controllers\Api\ProductController;
+use App\Http\Controllers\Api\StripePaymentController;
 use App\Http\Controllers\Api\SuperAdminController;
 use App\Http\Controllers\Api\TableController;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,11 @@ Route::post('/v1/pos/tables/{tableNumber}/items', [PosKdsController::class, 'add
 Route::post('/v1/pos/tables/{tableNumber}/close', [PosKdsController::class, 'closeTable']);
 Route::post('/v1/pos/tables/{tableNumber}/clear-waiter', [PosKdsController::class, 'clearWaiterCall']);
 Route::post('/v1/pos/tables/{tableNumber}/reset', [PosKdsController::class, 'resetTable']);
+
+// Rotas de Pagamento Stripe (Online & Balcão)
+Route::post('/v1/payments/stripe/create-intent', [StripePaymentController::class, 'createPaymentIntent']);
+Route::post('/v1/payments/stripe/confirm', [StripePaymentController::class, 'confirmPayment']);
+Route::post('/v1/payments/stripe/webhook', [StripePaymentController::class, 'handleWebhook']);
 
 // Rotas Operacionais da Cozinha (KDS)
 Route::get('/v1/kds/orders', [PosKdsController::class, 'getKitchenOrders']);

@@ -35,6 +35,7 @@ import {
   Store,
   LogOut,
 } from 'lucide-react';
+import { StripePaymentModal } from '@/components/payment/StripePaymentModal';
 
 interface OrderLineItem {
   id: number;
@@ -103,6 +104,7 @@ export default function PosCounterPage() {
   const [addItemQuantity, setAddItemQuantity] = useState(1);
   const [addItemNotes, setAddItemNotes] = useState('');
   const [isAddingItem, setIsAddingItem] = useState(false);
+  const [showStripeModal, setShowStripeModal] = useState(false);
 
   // Modal customizado de confirmação
   const [confirmModal, setConfirmModal] = useState<{
@@ -188,6 +190,11 @@ export default function PosCounterPage() {
 
   // Fechamento e baixa no caixa
   const handleCloseTable = async (tableNumber: string) => {
+    if (paymentMethod === 'credit_card') {
+      setShowStripeModal(true);
+      return;
+    }
+
     setIsClosing(true);
     try {
       await api.post(`/pos/tables/${tableNumber}/close`, {
@@ -564,8 +571,8 @@ export default function PosCounterPage() {
             </p>
           </div>
           <div className="p-3.5 rounded-xl bg-[#C84E1F]/5 border border-[#C84E1F]/20">
-            <span className="text-[11px] text-[#C84E1F] font-medium">Total em aberto no salão</span>
-            <p className="text-xl font-bold text-[#C84E1F] mt-0.5">
+            <span className="text-[11px] text-[#9E3712] font-semibold">Total em aberto no salão</span>
+            <p className="text-xl font-bold text-[#9E3712] mt-0.5">
               R$ {totalOpenRevenue.toFixed(2).replace('.', ',')}
             </p>
           </div>
@@ -705,7 +712,16 @@ export default function PosCounterPage() {
                 <div
                   key={table.id}
                   onClick={() => setSelectedTable(table)}
-                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between min-h-[160px] relative group ${
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Mesa ${table.number}, status ${table.status}`}
+                  onKeyDown={(e) => {
+                    if (e.key === ' ' || e.key === 'Enter') {
+                      e.preventDefault();
+                      setSelectedTable(table);
+                    }
+                  }}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between min-h-[160px] relative group focus:outline-none focus:ring-2 focus:ring-[#C84E1F] ${
                     isSelected
                       ? 'border-[#C84E1F] bg-white ring-2 ring-[#C84E1F]/20 shadow-md'
                       : isBill
@@ -935,14 +951,18 @@ export default function PosCounterPage() {
                             <div className="mt-1 pl-5">
                               <span
                                 className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                                  item.status === 'ready'
+                                  item.status === 'delivered'
+                                    ? 'bg-stone-100 text-[#44403C] border border-stone-200 font-semibold'
+                                    : item.status === 'ready'
                                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                     : item.status === 'preparing'
                                     ? 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20'
                                     : 'bg-stone-100 text-[#78716A]'
                                 }`}
                               >
-                                {item.status === 'ready'
+                                {item.status === 'delivered'
+                                  ? '✓ Entregue na mesa'
+                                  : item.status === 'ready'
                                   ? 'Pronto na cozinha'
                                   : item.status === 'preparing'
                                   ? 'Em preparo'
@@ -1021,7 +1041,7 @@ export default function PosCounterPage() {
                             : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
                         }`}
                       >
-                        Cartão
+                        Cartão (Stripe)
                       </button>
                       <button
                         type="button"
@@ -1499,6 +1519,21 @@ export default function PosCounterPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {selectedTable && (
+        <StripePaymentModal
+          isOpen={showStripeModal}
+          onClose={() => setShowStripeModal(false)}
+          tableNumber={selectedTable.number}
+          amount={grandTotal}
+          includeService={includeService}
+          onSuccess={() => {
+            toast.success(`Mesa ${selectedTable.number} paga via Stripe e liberada com sucesso!`);
+            setSelectedTable(null);
+            fetchTables(true);
+          }}
+        />
       )}
     </div>
   );

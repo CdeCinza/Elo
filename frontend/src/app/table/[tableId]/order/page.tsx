@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from '@/components/ui/ToastProvider';
+import { StripePaymentModal } from '@/components/payment/StripePaymentModal';
 
 interface OrderItem {
   id: number;
@@ -61,6 +62,7 @@ export default function OrderTrackingPage() {
   const [splitCount, setSplitCount] = useState(2);
   const [includeService, setIncludeService] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showStripeModal, setShowStripeModal] = useState(false);
   const [requestingBill, setRequestingBill] = useState(false);
 
   const handleOpenBillModal = async () => {
@@ -322,6 +324,16 @@ export default function OrderTrackingPage() {
             <div className="space-y-2">
               <button
                 onClick={() => {
+                  setShowPaymentModal(false);
+                  setShowStripeModal(true);
+                }}
+                className="w-full py-3 rounded-xl bg-[#191817] hover:bg-[#2C2A29] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+              >
+                <CreditCard className="w-4 h-4 text-[#C84E1F]" />
+                Pagar com Cartão (Stripe Online)
+              </button>
+              <button
+                onClick={() => {
                   toast.success('Chave PIX copiada para a área de transferência!', 'Código PIX');
                   setShowPaymentModal(false);
                 }}
@@ -331,7 +343,7 @@ export default function OrderTrackingPage() {
               </button>
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="w-full py-2.5 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] text-xs font-medium transition-colors"
+                className="w-full py-2.5 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] text-xs font-medium transition-colors cursor-pointer"
               >
                 Fechar / Pagar na máquina
               </button>
@@ -339,6 +351,20 @@ export default function OrderTrackingPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Pagamento Seguro Stripe */}
+      <StripePaymentModal
+        isOpen={showStripeModal}
+        onClose={() => setShowStripeModal(false)}
+        tableNumber={tableId}
+        amount={total}
+        includeService={includeService}
+        onSuccess={() => {
+          toast.success('Pagamento efetuado com sucesso via cartão!', 'Conta Liquidada');
+          setShowStripeModal(false);
+          refresh();
+        }}
+      />
     </div>
   );
 }
