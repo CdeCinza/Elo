@@ -19,16 +19,16 @@ class ProductPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 
     public function update(User $user, Product $product): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 
     public function delete(User $user, Product $product): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

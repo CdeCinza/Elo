@@ -9,12 +9,12 @@ class OrderPolicy
 {
     public function viewAny(User $user): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'chef', 'cashier']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'chef', 'cashier', 'super_admin']);
     }
 
     public function view(User $user, Order $order): bool
     {
-        if (in_array($user->role?->name, ['owner', 'manager', 'chef', 'cashier'])) {
+        if (in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'chef', 'cashier', 'super_admin'])) {
             return true;
         }
 
@@ -27,12 +27,12 @@ class OrderPolicy
 
     public function create(User $user): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'cashier']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'cashier', 'super_admin']);
     }
 
     public function update(User $user, Order $order): bool
     {
-        if (in_array($user->role?->name, ['owner', 'manager'])) {
+        if (in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin'])) {
             return true;
         }
 
@@ -50,6 +50,6 @@ class OrderPolicy
 
     public function delete(User $user, Order $order): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

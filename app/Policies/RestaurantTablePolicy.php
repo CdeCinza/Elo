@@ -10,28 +10,28 @@ class RestaurantTablePolicy
     public function viewAny(User $user): bool
     {
         // qualquer funcionário autenticado visualiza o mapa de mesas
-        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'chef', 'cashier']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'chef', 'cashier', 'super_admin']);
     }
 
     public function view(User $user, RestaurantTable $table): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'chef', 'cashier']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'chef', 'cashier', 'super_admin']);
     }
 
     public function create(User $user): bool
     {
         // cadastrar mesa física é só com a gerência/dono
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 
     public function update(User $user, RestaurantTable $table): bool
     {
         // garçom e caixa podem alterar status/abrir comanda, gerência faz tudo
-        return in_array($user->role?->name, ['owner', 'manager', 'waiter', 'cashier']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'cashier', 'super_admin']);
     }
 
     public function delete(User $user, RestaurantTable $table): bool
     {
-        return in_array($user->role?->name, ['owner', 'manager']);
+        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }
