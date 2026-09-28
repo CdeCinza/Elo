@@ -1,32 +1,27 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useSyncExternalStore } from 'react';
 import Link from 'next/link';
-import { api } from '@/lib/api';
+import { useRouter } from 'next/navigation';
+import { isAxiosError } from 'axios';
+import { api, getApiErrorMessage, signOut } from '@/lib/api';
 import { toast } from '@/components/ui/ToastProvider';
+import { formatBRL } from '@/lib/format';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { getAuthUser, getActiveRestaurant, User, Restaurant } from '@/lib/auth';
 import {
   LayoutGrid,
-  Receipt,
   Users,
-  Clock,
-  CheckCircle2,
   AlertCircle,
   Plus,
   CreditCard,
   Search,
-  ArrowUpRight,
   Printer,
-  DollarSign,
-  Coffee,
   ChefHat,
-  ChevronRight,
-  TrendingUp,
   Bell,
   X,
   Trash2,
   Edit3,
-  Check,
   RefreshCw,
   Smartphone,
   AlertTriangle,
@@ -35,7 +30,7 @@ import {
   Store,
   LogOut,
 } from 'lucide-react';
-import { StripePaymentModal } from '@/components/payment/StripePaymentModal';
+import { StripePaymentModal, isStripeConfigured } from '@/components/payment/StripePaymentModal';
 
 interface OrderLineItem {
   id: number;
@@ -69,19 +64,58 @@ interface ProductItem {
   description?: string;
 }
 
+const runningCounterActions = new Set<string>();
+// Sem permissão não adianta insistir: o polling para até a próxima carga manual
+const posAccess = { denied: false };
+
+/**
+ * Impede que cliques repetidos disparem a mesma ação (ex.: lançar item duas vezes) antes do re-render.
+ */
+const withActionLock = <Args extends unknown[]>(actionKey: string, action: (...args: Args) => Promise<void>) =>
+  async (...args: Args): Promise<void> => {
+    if (runningCounterActions.has(actionKey)) return;
+    runningCounterActions.add(actionKey);
+    try {
+      await action(...args);
+    } finally {
+      runningCounterActions.delete(actionKey);
+    }
+  };
+
+const tableStatusLabels: Record<string, string> = {
+  free: 'livre',
+  occupied: 'ocupada',
+  bill_requested: 'pedindo conta',
+  reserved: 'reservada',
+};
+
 export default function PosCounterPage() {
   const [tables, setTables] = useState<TableData[]>([]);
+  const router = useRouter();
   const [selectedTable, setSelectedTable] = useState<TableData | null>(null);
+  const detailsPanelRef = useRef<HTMLElement>(null);
+
+  // Abaixo de lg o painel de detalhes fica sob o mapa de mesas: rola até ele para dar retorno imediato
+  const handleSelectTable = (table: TableData) => {
+    setSelectedTable(table);
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches) {
+      requestAnimationFrame(() => detailsPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'occupied' | 'bill_requested' | 'free'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [includeService, setIncludeService] = useState(true);
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix' | 'cash'>('credit_card');
+  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix' | 'cash'>(isStripeConfigured ? 'credit_card' : 'pix');
   const [isClosing, setIsClosing] = useState(false);
-  const [operatorName, setOperatorName] = useState('Matheus');
-  const [isEditingOperator, setIsEditingOperator] = useState(false);
-  const [tempOperatorName, setTempOperatorName] = useState('');
+
+
+
   const [authUser, setAuthUser] = useState<User | null>(null);
+  const [loadError, setLoadError] = useState<'forbidden' | 'network' | null>(null);
+  const roleName = authUser?.is_super_admin ? 'super_admin' : authUser?.role?.name ?? '';
+  const canManageTables = ['owner', 'restaurant_admin', 'manager', 'super_admin'].includes(roleName);
+  const canAccessKitchen = ['owner', 'restaurant_admin', 'manager', 'chef', 'super_admin'].includes(roleName);
   const [activeRestaurant, setActiveRestaurantState] = useState<Restaurant | null>(null);
 
   // Modal para criar nova mesa
@@ -115,6 +149,14 @@ export default function PosCounterPage() {
     onConfirm: () => Promise<void> | void;
   } | null>(null);
 
+  // Esc fecha o modal aberto mais recente (confirmação > lançamento > edição > criação)
+  useEscapeKey(!!confirmModal || showAddModal || showEditModal || showCreateModal, () => {
+    if (confirmModal) setConfirmModal(null);
+    else if (showAddModal) setShowAddModal(false);
+    else if (showEditModal) setShowEditModal(false);
+    else setShowCreateModal(false);
+  });
+
   // Determina turno dinamicamente de acordo com horário local
   const currentShift = useMemo(() => {
     const hour = new Date().getHours();
@@ -132,6 +174,8 @@ export default function PosCounterPage() {
       const res = await api.get('/pos/tables');
       const loadedTables: TableData[] = res.data.tables || [];
       setTables(loadedTables);
+      posAccess.denied = false;
+      setLoadError(null);
 
       // Sincroniza mesa selecionada
       setSelectedTable((prev) => {
@@ -140,6 +184,8 @@ export default function PosCounterPage() {
       });
     } catch (err) {
       console.error('Erro ao buscar mesas do POS:', err);
+      posAccess.denied = isAxiosError(err) && err.response?.status === 403;
+      setLoadError(isAxiosError(err) && err.response?.status === 403 ? 'forbidden' : 'network');
     } finally {
       if (!isSilent) setLoading(false);
     }
@@ -148,7 +194,7 @@ export default function PosCounterPage() {
   // Busca cardápio para lançamento manual
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await api.get('/products');
+      const res = await api.get('/products', { params: { per_page: 200, available: 1 } });
       setProducts(res.data.data || []);
     } catch (err) {
       console.error('Erro ao carregar produtos:', err);
@@ -156,40 +202,45 @@ export default function PosCounterPage() {
   }, []);
 
   useEffect(() => {
-    const user = getAuthUser();
-    const rest = getActiveRestaurant();
-    if (user) {
-      setAuthUser(user);
-      if (user.name) setOperatorName(user.name);
-    }
-    if (rest) {
-      setActiveRestaurantState(rest);
-    }
+    const initialLoad = setTimeout(() => {
+      const user = getAuthUser();
+      const rest = getActiveRestaurant();
+      if (user) {
+        setAuthUser(user);
 
-    fetchTables();
-    fetchProducts();
+      }
+      if (rest) {
+        setActiveRestaurantState(rest);
+      }
+
+      void fetchTables();
+      void fetchProducts();
+    }, 0);
 
     // Polling a cada 3,5 segundos
     const interval = setInterval(() => {
-      fetchTables(true);
+      if (!posAccess.denied) fetchTables(true);
     }, 3500);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(initialLoad);
+      clearInterval(interval);
+    };
   }, [fetchTables, fetchProducts]);
 
   // Abertura manual de mesa
-  const handleOpenTable = async (tableNumber: string) => {
+  const handleOpenTable = withActionLock('handleOpenTable', async (tableNumber: string) => {
     try {
       await api.post(`/pos/tables/${tableNumber}/open`);
       toast.success(`Mesa ${tableNumber} aberta com sucesso.`);
       await fetchTables(true);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao abrir mesa.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao abrir mesa.'));
     }
-  };
+  });
 
   // Fechamento e baixa no caixa
-  const handleCloseTable = async (tableNumber: string) => {
+  const performCloseTable = withActionLock('performCloseTable', async (tableNumber: string) => {
     if (paymentMethod === 'credit_card') {
       setShowStripeModal(true);
       return;
@@ -199,26 +250,39 @@ export default function PosCounterPage() {
     try {
       await api.post(`/pos/tables/${tableNumber}/close`, {
         payment_method: paymentMethod,
+        include_service: includeService,
       });
       toast.success(`Mesa ${tableNumber} finalizada com sucesso! Baixa realizada.`);
       setSelectedTable(null);
       await fetchTables(true);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao fechar mesa.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao fechar mesa.'));
     } finally {
       setIsClosing(false);
     }
+  });
+
+  // Avisa antes de fechar uma conta com pratos que a cozinha ainda não entregou
+  const handleCloseTable = (tableNumber: string) => {
+    const itemsInKitchen = (selectedTable?.items ?? []).filter((item) => item.status !== 'delivered').length;
+    if (itemsInKitchen === 0) {
+      void performCloseTable(tableNumber);
+      return;
+    }
+
+    setConfirmModal({
+      title: 'Ainda há pratos na cozinha',
+      message: `${itemsInKitchen} ${itemsInKitchen === 1 ? 'item ainda não foi entregue' : 'itens ainda não foram entregues'} na Mesa ${tableNumber}. Ao fechar a conta, eles saem da fila da cozinha. Deseja fechar mesmo assim?`,
+      confirmText: 'Fechar conta mesmo assim',
+      isDestructive: true,
+      onConfirm: () => performCloseTable(tableNumber),
+    });
   };
 
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
+  const isMounted = useSyncExternalStore(() => () => {}, () => true, () => false);
 
   // Abrir modal de criação de mesa sugerindo o próximo número
   const handleOpenCreateModal = () => {
-    console.log('[POS] Clicou para abrir modal de nova mesa');
     setCreateError(null);
     try {
       const existingNumbers = (tables || [])
@@ -244,7 +308,7 @@ export default function PosCounterPage() {
   };
 
   // Criar nova mesa no banco de dados
-  const handleCreateTable = async (e: React.FormEvent) => {
+  const handleCreateTable = withActionLock('handleCreateTable', async (e: React.FormEvent) => {
     e.preventDefault();
     setCreateError(null);
 
@@ -266,14 +330,14 @@ export default function PosCounterPage() {
       if (res.data?.table) {
         setSelectedTable(res.data.table);
       }
-    } catch (err: any) {
-      const msg = err.response?.data?.message || 'Erro ao cadastrar nova mesa. Verifique a conexão com o servidor.';
+    } catch (err) {
+      const msg = getApiErrorMessage(err, 'Erro ao cadastrar nova mesa. Verifique a conexão com o servidor.');
       setCreateError(msg);
       toast.error(msg);
     } finally {
       setIsCreatingTable(false);
     }
-  };
+  });
 
   // Abrir modal para editar capacidade/número da mesa
   const handleOpenEditModal = (table: TableData) => {
@@ -284,7 +348,7 @@ export default function PosCounterPage() {
   };
 
   // Salvar edição da mesa
-  const handleSaveEditTable = async (e: React.FormEvent) => {
+  const handleSaveEditTable = withActionLock('handleSaveEditTable', async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTable) return;
 
@@ -297,12 +361,12 @@ export default function PosCounterPage() {
       toast.success('Mesa atualizada com sucesso!');
       setShowEditModal(false);
       await fetchTables(true);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao atualizar dados da mesa.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao atualizar dados da mesa.'));
     } finally {
       setIsSavingEdit(false);
     }
-  };
+  });
 
   // Excluir mesa (apenas se estiver livre)
   const handleDeleteTable = (table: TableData) => {
@@ -319,23 +383,23 @@ export default function PosCounterPage() {
             setSelectedTable(null);
           }
           await fetchTables(true);
-        } catch (err: any) {
-          toast.error(err.response?.data?.message || 'Erro ao excluir mesa.');
+        } catch (err) {
+          toast.error(getApiErrorMessage(err, 'Erro ao excluir mesa.'));
         }
       },
     });
   };
 
   // Atender / silenciar chamado de garçom
-  const handleClearWaiterCall = async (tableNumber: string) => {
+  const handleClearWaiterCall = withActionLock('handleClearWaiterCall', async (tableNumber: string) => {
     try {
       await api.post(`/pos/tables/${tableNumber}/clear-waiter`);
       toast.info(`Chamado da Mesa ${tableNumber} atendido.`);
       await fetchTables(true);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao atender chamado.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao atender chamado.'));
     }
-  };
+  });
 
   // Forçar liberação / limpeza de mesa
   const handleResetTable = (tableNumber: string) => {
@@ -349,26 +413,26 @@ export default function PosCounterPage() {
           await api.post(`/pos/tables/${tableNumber}/reset`);
           toast.success(`Mesa ${tableNumber} liberada com sucesso.`);
           await fetchTables(true);
-        } catch (err: any) {
-          toast.error(err.response?.data?.message || 'Erro ao liberar mesa.');
+        } catch (err) {
+          toast.error(getApiErrorMessage(err, 'Erro ao liberar mesa.'));
         }
       },
     });
   };
 
   // Gerar mesas padrão (01 a 10) caso o banco esteja vazio
-  const handleSeedDefaults = async () => {
+  const handleSeedDefaults = withActionLock('handleSeedDefaults', async () => {
     try {
       await api.post('/pos/tables/seed-defaults');
       toast.success('Mesas 01 a 10 geradas com sucesso!');
       await fetchTables();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao gerar mesas padrão.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao gerar mesas padrão.'));
     }
-  };
+  });
 
   // Lançar item na comanda ativa
-  const handleAddItemToComanda = async () => {
+  const handleAddItemToComanda = withActionLock('handleAddItemToComanda', async () => {
     if (!selectedTable || !selectedProductId) return;
     setIsAddingItem(true);
     try {
@@ -383,12 +447,12 @@ export default function PosCounterPage() {
       setAddItemQuantity(1);
       setAddItemNotes('');
       await fetchTables(true);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Erro ao adicionar item.');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, 'Erro ao adicionar item.'));
     } finally {
       setIsAddingItem(false);
     }
-  };
+  });
 
   const occupiedCount = tables.filter((t) => t.status === 'occupied').length;
   const billCount = tables.filter((t) => t.status === 'bill_requested').length;
@@ -409,21 +473,23 @@ export default function PosCounterPage() {
   });
 
   const subtotal = selectedTable?.total || 0;
-  const serviceFee = includeService ? subtotal * 0.1 : 0;
+  const serviceFee = includeService ? Math.round(subtotal * 10) / 100 : 0;
   const grandTotal = subtotal + serviceFee;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
+    <>
+    <div className="print:hidden min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
       {/* 1. Header do Balcão */}
-      <header className="h-16 px-6 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0 shadow-2xs">
-        <div className="flex items-center gap-4">
+      <header className="h-16 px-4 sm:px-6 gap-2 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0 shadow-2xs">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <Link href="/" className="flex items-center gap-2 group">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="text-xs text-[#78716A] border-l border-[#E0DBD3] pl-3">
+            <span className="hidden sm:inline text-xs text-[#78716A] border-l border-[#E0DBD3] pl-3">
               Frente de Caixa & Salão
             </span>
           </Link>
 
+          {canAccessKitchen && (
           <Link
             href="/kitchen"
             target="_blank"
@@ -432,6 +498,7 @@ export default function PosCounterPage() {
             <ChefHat className="w-3.5 h-3.5 text-[#C84E1F]" />
             <span>KDS Cozinha</span>
           </Link>
+          )}
 
           {/* Badge do Restaurante Ativo */}
           {activeRestaurant && (
@@ -469,7 +536,7 @@ export default function PosCounterPage() {
             <span>
               Total aberto:{' '}
               <strong className="text-[#C84E1F] font-semibold">
-                R$ {totalOpenRevenue.toFixed(2).replace('.', ',')}
+                {formatBRL(totalOpenRevenue)}
               </strong>
             </span>
           </div>
@@ -482,67 +549,36 @@ export default function PosCounterPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Operador Dinâmico */}
-          {isEditingOperator ? (
-            <div className="flex items-center gap-1 bg-[#FAF8F5] border border-[#C84E1F] rounded-lg px-2 py-1">
-              <input
-                type="text"
-                maxLength={30}
-                value={tempOperatorName}
-                onChange={(e) => setTempOperatorName(e.target.value.slice(0, 30))}
-                className="bg-transparent text-xs text-[#191817] w-24 outline-none"
-                placeholder="Nome..."
-                autoFocus
-              />
-              <button
-                onClick={() => {
-                  if (tempOperatorName.trim()) setOperatorName(tempOperatorName.trim());
-                  setIsEditingOperator(false);
-                }}
-                className="text-emerald-700 hover:text-emerald-800 p-0.5 cursor-pointer"
-              >
-                <Check className="w-3.5 h-3.5" />
-              </button>
-              <button
-                onClick={() => setIsEditingOperator(false)}
-                className="text-[#78716A] hover:text-rose-600 p-0.5 cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => {
-                setTempOperatorName(operatorName);
-                setIsEditingOperator(true);
-              }}
-              title="Clique para alterar operador do caixa"
-              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#C84E1F] text-xs cursor-pointer transition-colors shadow-2xs"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-600" />
-              <span className="text-[#78716A]">Operador:</span>
-              <span className="font-medium text-[#191817] flex items-center gap-1">
-                {operatorName}
-                <Edit3 className="w-2.5 h-2.5 text-[#78716A]" />
-              </span>
-            </button>
-          )}
+          {/* Operador logado */}
+          <div
+            title="Usuário logado neste caixa"
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs shadow-2xs max-w-[220px]"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
+            <span className="text-[#78716A]">Operador:</span>
+            <span className="font-medium text-[#191817] truncate">{authUser?.name ?? '—'}</span>
+          </div>
 
           <button
             onClick={() => fetchTables(false)}
             title="Atualizar mesas agora"
+            aria-label="Atualizar mesas agora"
             className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-[#191817] text-[#78716A] transition-colors cursor-pointer shadow-2xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#C84E1F]' : ''}`} />
           </button>
 
-          <Link
-            href="/login"
-            title="Acessar outra conta / Fazer Login"
-            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#78716A] transition-colors shadow-2xs"
+          <button
+            type="button"
+            onClick={() => {
+              void signOut().then(() => router.push('/login'));
+            }}
+            title="Sair do sistema"
+            aria-label="Sair do sistema"
+            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#78716A] transition-colors shadow-2xs cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-          </Link>
+          </button>
         </div>
       </header>
 
@@ -573,7 +609,7 @@ export default function PosCounterPage() {
           <div className="p-3.5 rounded-xl bg-[#C84E1F]/5 border border-[#C84E1F]/20">
             <span className="text-[11px] text-[#9E3712] font-semibold">Total em aberto no salão</span>
             <p className="text-xl font-bold text-[#9E3712] mt-0.5">
-              R$ {totalOpenRevenue.toFixed(2).replace('.', ',')}
+              {formatBRL(totalOpenRevenue)}
             </p>
           </div>
         </div>
@@ -646,6 +682,7 @@ export default function PosCounterPage() {
             </div>
 
             {/* Botão Real de Criar Mesa */}
+{canManageTables && (
             <button
               type="button"
               onClick={handleOpenCreateModal}
@@ -654,6 +691,7 @@ export default function PosCounterPage() {
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Nova mesa</span>
             </button>
+)}
           </div>
         </div>
       </div>
@@ -662,8 +700,47 @@ export default function PosCounterPage() {
       <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
         {/* Lado Esquerdo: Grid Rico de Mesas */}
         <section className="flex-1 p-6 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#EAE6E1]">
+          {loadError && tables.length > 0 && (
+            <div role="status" className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 shrink-0" />
+              <span>Conexão instável: exibindo os últimos dados carregados. Tentando novamente...</span>
+            </div>
+          )}
+
+          {loadError && tables.length === 0 && !loading && (
+            <div className="h-full flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center mb-4 shadow-xs">
+                <AlertTriangle className="w-8 h-8 text-[#C84E1F]" />
+              </div>
+              <h3 className="text-base font-semibold text-[#191817] mb-1">
+                {loadError === 'forbidden' ? 'Seu perfil não acessa o caixa' : 'Não foi possível carregar o salão'}
+              </h3>
+              <p className="text-xs text-[#78716A] mb-6">
+                {loadError === 'forbidden'
+                  ? 'Esta tela é usada por gerência, garçons e caixa. Entre com outra conta ou vá para a sua área.'
+                  : 'Verifique a conexão com o servidor e tente novamente.'}
+              </p>
+              <div className="flex items-center gap-3">
+                {loadError === 'forbidden' && canAccessKitchen && (
+                  <Link href="/kitchen" className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold">
+                    Ir para a cozinha
+                  </Link>
+                )}
+                {loadError === 'network' && (
+                  <button
+                    type="button"
+                    onClick={() => void fetchTables(false)}
+                    className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold cursor-pointer"
+                  >
+                    Tentar novamente
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Caso não haja mesas cadastradas */}
-          {tables.length === 0 && !loading && (
+          {!loadError && tables.length === 0 && !loading && (
             <div className="h-full flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center text-[#A8A199] mb-4 shadow-xs">
                 <LayoutGrid className="w-8 h-8 text-[#C84E1F]" />
@@ -674,6 +751,7 @@ export default function PosCounterPage() {
               <p className="text-xs text-[#78716A] mb-6">
                 Cadastre as mesas do seu restaurante ou inicialize com o layout padrão de 10 mesas.
               </p>
+{canManageTables && (
               <div className="flex items-center gap-3">
                 <button
                   type="button"
@@ -691,6 +769,7 @@ export default function PosCounterPage() {
                   <span>Gerar Mesas 01 a 10</span>
                 </button>
               </div>
+)}
             </div>
           )}
 
@@ -711,14 +790,15 @@ export default function PosCounterPage() {
               return (
                 <div
                   key={table.id}
-                  onClick={() => setSelectedTable(table)}
+                  onClick={() => handleSelectTable(table)}
                   role="button"
                   tabIndex={0}
-                  aria-label={`Mesa ${table.number}, status ${table.status}`}
+                  aria-label={`Mesa ${table.number}, ${tableStatusLabels[table.status] ?? table.status}`}
+                  aria-pressed={isSelected}
                   onKeyDown={(e) => {
                     if (e.key === ' ' || e.key === 'Enter') {
                       e.preventDefault();
-                      setSelectedTable(table);
+                      handleSelectTable(table);
                     }
                   }}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between min-h-[160px] relative group focus:outline-none focus:ring-2 focus:ring-[#C84E1F] ${
@@ -807,7 +887,7 @@ export default function PosCounterPage() {
                     <div className="pt-2.5 mt-2.5 border-t border-[#EAE6E1] flex items-center justify-between">
                       <span className="text-xs text-[#78716A]">Consumo:</span>
                       <span className="text-sm font-bold text-[#191817]">
-                        R$ {(table.total || 0).toFixed(2).replace('.', ',')}
+                        {formatBRL((table.total || 0))}
                       </span>
                     </div>
                   ) : (
@@ -821,6 +901,7 @@ export default function PosCounterPage() {
                       >
                         + Abrir mesa
                       </button>
+{canManageTables && (<>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -841,6 +922,7 @@ export default function PosCounterPage() {
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
+</>)}
                     </div>
                   )}
                 </div>
@@ -850,7 +932,7 @@ export default function PosCounterPage() {
         </section>
 
         {/* Lado Direito: Comanda Digital Completa & Gestão da Mesa */}
-        <aside className="w-full lg:w-[420px] bg-white p-6 flex flex-col justify-between shrink-0 overflow-y-auto border-t lg:border-t-0 shadow-2xs">
+        <aside ref={detailsPanelRef} className="w-full lg:w-[420px] bg-white p-6 scroll-mt-4 flex flex-col justify-between shrink-0 overflow-y-auto border-t lg:border-t-0 shadow-2xs">
           {selectedTable ? (
             selectedTable.status !== 'free' ? (
               /* Mesa Ocupada ou Pedindo Conta */
@@ -945,7 +1027,7 @@ export default function PosCounterPage() {
                             </div>
                             {item.notes && (
                               <p className="text-[11px] text-[#78716A] mt-0.5 pl-5">
-                                Obs: {item.notes}
+                                {/^(Obs|Ponto|Extras):/.test(item.notes) ? item.notes : `Obs: ${item.notes}`}
                               </p>
                             )}
                             <div className="mt-1 pl-5">
@@ -973,10 +1055,10 @@ export default function PosCounterPage() {
 
                           <div className="text-right shrink-0">
                             <span className="font-bold text-[#191817]">
-                              R$ {(item.price * item.quantity).toFixed(2).replace('.', ',')}
+                              {formatBRL((item.price * item.quantity))}
                             </span>
                             <p className="text-[10px] text-[#78716A]">
-                              R$ {item.price.toFixed(2).replace('.', ',')} un
+                              {formatBRL(item.price)} un
                             </p>
                           </div>
                         </div>
@@ -991,7 +1073,7 @@ export default function PosCounterPage() {
                   <div className="space-y-1.5 text-xs">
                     <div className="flex justify-between text-[#78716A]">
                       <span>Subtotal dos itens</span>
-                      <span>R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                      <span>{formatBRL(subtotal)}</span>
                     </div>
 
                     <div className="flex justify-between items-center text-[#78716A]">
@@ -1004,13 +1086,13 @@ export default function PosCounterPage() {
                         />
                         <span>Serviço garçom (10%)</span>
                       </label>
-                      <span>R$ {serviceFee.toFixed(2).replace('.', ',')}</span>
+                      <span>{formatBRL(serviceFee)}</span>
                     </div>
 
                     <div className="flex justify-between text-base font-bold text-[#191817] pt-2 border-t border-[#EAE6E1]">
                       <span>Total da conta</span>
                       <span className="text-[#C84E1F]">
-                        R$ {grandTotal.toFixed(2).replace('.', ',')}
+                        {formatBRL(grandTotal)}
                       </span>
                     </div>
                   </div>
@@ -1035,7 +1117,9 @@ export default function PosCounterPage() {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('credit_card')}
-                        className={`py-2 px-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                        disabled={!isStripeConfigured}
+                        title={isStripeConfigured ? undefined : 'Pagamento com cartão não configurado neste ambiente'}
+                        className={`py-2 px-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                           paymentMethod === 'credit_card'
                             ? 'bg-[#C84E1F] border-[#C84E1F] text-white font-semibold shadow-xs'
                             : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
@@ -1078,6 +1162,7 @@ export default function PosCounterPage() {
                   </div>
 
                   {/* Ação de Gerência: Forçar Liberação / Desocupação */}
+{canManageTables && (
                   <div className="pt-2 flex justify-center">
                     <button
                       onClick={() => handleResetTable(selectedTable.number)}
@@ -1087,6 +1172,7 @@ export default function PosCounterPage() {
                       <span>Forçar liberação da mesa</span>
                     </button>
                   </div>
+)}
                 </div>
               </div>
             ) : (
@@ -1104,6 +1190,7 @@ export default function PosCounterPage() {
                         </span>
                       </div>
 
+{canManageTables && (
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleOpenEditModal(selectedTable)}
@@ -1120,6 +1207,7 @@ export default function PosCounterPage() {
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
+)}
                     </div>
                   </div>
 
@@ -1172,6 +1260,7 @@ export default function PosCounterPage() {
                     <span>Abrir Comanda no Salão</span>
                   </button>
 
+{canManageTables && (
                   <div className="flex items-center justify-between text-xs text-[#78716A] px-1">
                     <button
                       onClick={() => handleOpenEditModal(selectedTable)}
@@ -1188,6 +1277,7 @@ export default function PosCounterPage() {
                       <span>Excluir mesa</span>
                     </button>
                   </div>
+)}
                 </div>
               </div>
             )
@@ -1203,6 +1293,7 @@ export default function PosCounterPage() {
                 Selecione uma mesa no mapa para abrir comanda, consultar itens, gerenciar lugares ou
                 registrar pagamentos.
               </p>
+{canManageTables && (
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
@@ -1211,6 +1302,7 @@ export default function PosCounterPage() {
                 <Plus className="w-3.5 h-3.5 text-[#C84E1F]" />
                 <span>Cadastrar nova mesa</span>
               </button>
+)}
             </div>
           )}
         </aside>
@@ -1258,7 +1350,8 @@ export default function PosCounterPage() {
                 <input
                   type="text"
                   maxLength={30}
-                  placeholder="Ex: 11, 12, Varanda 01..."
+                  placeholder="Ex: 11, 12, 15..."
+                  inputMode="numeric"
                   value={newTableNumber}
                   onChange={(e) => setNewTableNumber(e.target.value.slice(0, 30))}
                   className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
@@ -1415,7 +1508,7 @@ export default function PosCounterPage() {
                   <option value="">Escolha um prato ou bebida...</option>
                   {products.map((prod) => (
                     <option key={prod.id} value={prod.id}>
-                      {prod.name} — R$ {Number(prod.price).toFixed(2).replace('.', ',')}
+                      {prod.name} — {formatBRL(Number(prod.price))}
                     </option>
                   ))}
                 </select>
@@ -1536,5 +1629,32 @@ export default function PosCounterPage() {
         />
       )}
     </div>
+
+      {/* Pré-conta impressa: só aparece na impressão ("Imprimir" no painel da mesa) */}
+      {selectedTable && (
+        <section aria-hidden="true" className="hidden print:block p-6 text-black font-mono text-xs max-w-[80mm]">
+          <p className="text-center text-base font-bold">{activeRestaurant?.name ?? 'ELO Gastronomia'}</p>
+          <p className="text-center mb-3">Pré-conta • Mesa {selectedTable.number}</p>
+          <p>Aberta às {selectedTable.opened_at ?? '—'}</p>
+          <p className="mb-2">Emitida em {new Date().toLocaleString('pt-BR')}</p>
+          <hr className="border-dashed border-black my-2" />
+          {(selectedTable.items ?? []).map((item) => (
+            <div key={item.id} className="flex justify-between gap-2">
+              <span>
+                {item.quantity}x {item.name}
+              </span>
+              <span>{formatBRL(item.subtotal ?? item.price * item.quantity)}</span>
+            </div>
+          ))}
+          <hr className="border-dashed border-black my-2" />
+          <div className="flex justify-between"><span>Subtotal</span><span>{formatBRL(subtotal)}</span></div>
+          {includeService && (
+            <div className="flex justify-between"><span>Serviço (10%)</span><span>{formatBRL(serviceFee)}</span></div>
+          )}
+          <div className="flex justify-between font-bold text-sm mt-1"><span>Total</span><span>{formatBRL(grandTotal)}</span></div>
+          <p className="text-center mt-4">Documento sem valor fiscal</p>
+        </section>
+      )}
+    </>
   );
 }

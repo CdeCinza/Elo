@@ -1,14 +1,32 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { api } from '@/lib/api';
+import { api, getApiErrorMessage } from '@/lib/api';
+import { formatBRL } from '@/lib/format';
 import { CreditCard, CheckCircle2, AlertCircle, Loader2, X, ShieldCheck } from 'lucide-react';
+
+interface StripeCardElement {
+  mount(element: HTMLElement): void;
+}
+
+interface StripeInstance {
+  elements(): {
+    create(type: 'card', options: Record<string, unknown>): StripeCardElement;
+  };
+  confirmCardPayment(clientSecret: string, options: { payment_method: { card: StripeCardElement } }): Promise<{
+    error?: { message?: string };
+    paymentIntent?: { id: string; status: string };
+  }>;
+}
 
 declare global {
   interface Window {
-    Stripe?: (publishableKey: string) => any;
+    Stripe?: (publishableKey: string) => StripeInstance;
   }
 }
+
+/** Pagamento com cartão só aparece quando a chave publicável do Stripe está configurada. */
+export const isStripeConfigured = Boolean(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY);
 
 interface StripePaymentModalProps {
   isOpen: boolean;
@@ -17,7 +35,7 @@ interface StripePaymentModalProps {
   orderId?: number;
   amount: number;
   includeService?: boolean;
-  onSuccess: (data: any) => void;
+  onSuccess: (data: unknown) => void;
 }
 
 export function StripePaymentModal({
@@ -36,8 +54,8 @@ export function StripePaymentModal({
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [finalAmount, setFinalAmount] = useState<number>(amount);
 
-  const [stripeInstance, setStripeInstance] = useState<any>(null);
-  const [cardElement, setCardElement] = useState<any>(null);
+  const [stripeInstance, setStripeInstance] = useState<StripeInstance | null>(null);
+  const [cardElement, setCardElement] = useState<StripeCardElement | null>(null);
   const cardContainerRef = useRef<HTMLDivElement>(null);
 
   const publishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || '';
@@ -46,14 +64,10 @@ export function StripePaymentModal({
     if (!isOpen) return;
 
     let isMounted = true;
-    setLoading(true);
-    setErrorMessage(null);
-    setSuccess(false);
-
     const initStripe = async () => {
       try {
         if (!publishableKey) {
-          throw new Error('Chave publicável do Stripe não configurada (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY).');
+          throw new Error('Pagamento com cartão indisponível no momento. Use PIX ou dinheiro.');
         }
 
         if (!window.Stripe) {
@@ -62,7 +76,7 @@ export function StripePaymentModal({
             script.src = 'https://js.stripe.com/v3/';
             script.async = true;
             script.onload = () => resolve();
-            script.onerror = () => reject(new Error('Falha ao carregar biblioteca Stripe.js'));
+            script.onerror = () => reject(new Error('Não foi possível conectar ao Stripe. Verifique a internet e tente novamente.'));
             document.body.appendChild(script);
           });
         }
@@ -81,7 +95,7 @@ export function StripePaymentModal({
 
         const secret = intentRes.data.client_secret;
         setClientSecret(secret);
-        setFinalAmount(intentRes.data.amount);
+        setFinalAmount(Number(intentRes.data.amount) || 0);
 
         const elements = stripe.elements();
         const card = elements.create('card', {
@@ -110,24 +124,44 @@ export function StripePaymentModal({
         }, 100);
 
         setLoading(false);
-      } catch (err: any) {
+      } catch (err) {
         if (!isMounted) return;
         console.error('Erro ao inicializar pagamento Stripe:', err);
         setErrorMessage(
-          err.response?.data?.message || err.message || 'Erro ao inicializar checkout seguro.'
+          getApiErrorMessage(err, err instanceof Error ? err.message : 'Erro ao inicializar checkout seguro.')
         );
         setLoading(false);
       }
     };
 
-    initStripe();
+    const startCheckout = setTimeout(() => {
+      setLoading(true);
+      setErrorMessage(null);
+      setSuccess(false);
+      setClientSecret(null);
+      void initStripe();
+    }, 0);
 
     return () => {
+      clearTimeout(startCheckout);
       isMounted = false;
     };
   }, [isOpen, tableNumber, orderId, includeService, publishableKey]);
 
+  useEffect(() => {
+    if (!isOpen || processing) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, processing, onClose]);
+
   if (!isOpen) return null;
+
+  // Enquanto o Stripe não devolve o valor oficial, exibe o total calculado pela tela que abriu o modal
+  const displayedAmount = clientSecret ? finalAmount : amount;
+  const isTestMode = publishableKey.startsWith('pk_test_');
 
   const handlePay = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -163,11 +197,14 @@ export function StripePaymentModal({
           onSuccess(confirmRes.data);
           onClose();
         }, 1500);
+      } else {
+        setErrorMessage('O banco ainda está processando este pagamento. Aguarde alguns instantes e confira a comanda antes de tentar novamente.');
+        setProcessing(false);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Erro na confirmação do pagamento:', err);
       setErrorMessage(
-        err.response?.data?.message || err.message || 'Falha ao confirmar recebimento no sistema.'
+        getApiErrorMessage(err, err instanceof Error ? err.message : 'Falha ao confirmar recebimento no sistema.')
       );
       setProcessing(false);
     }
@@ -175,10 +212,16 @@ export function StripePaymentModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
-      <div className="w-full max-w-md bg-white rounded-3xl border border-[#EAE6E1] p-6 shadow-2xl relative text-[#191817]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Pagamento com cartão"
+        className="w-full max-w-md bg-white rounded-3xl border border-[#EAE6E1] p-6 shadow-2xl relative text-[#191817]"
+      >
         <button
           onClick={onClose}
           disabled={processing}
+          aria-label="Fechar pagamento"
           className="absolute top-5 right-5 w-8 h-8 rounded-full bg-[#FAF8F5] border border-[#EAE6E1] flex items-center justify-center text-[#78716A] hover:text-[#191817] transition-colors cursor-pointer disabled:opacity-50"
         >
           <X className="w-4 h-4" />
@@ -201,7 +244,7 @@ export function StripePaymentModal({
         <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE6E1] mb-5 flex items-center justify-between">
           <span className="text-xs text-[#78716A] font-medium">Total a cobrar:</span>
           <span className="text-xl font-bold text-[#C84E1F]">
-            R$ {finalAmount.toFixed(2).replace('.', ',')}
+            {formatBRL(displayedAmount)}
           </span>
         </div>
 
@@ -243,16 +286,18 @@ export function StripePaymentModal({
               )}
             </div>
 
-            <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 flex items-center justify-between">
-              <span>Cartão de teste Stripe:</span>
-              <code className="bg-amber-100/70 px-2 py-0.5 rounded font-mono font-bold text-amber-950">
-                4242 4242 4242 4242
-              </code>
-            </div>
+            {isTestMode && (
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 flex items-center justify-between">
+                <span>Cartão de teste Stripe:</span>
+                <code className="bg-amber-100/70 px-2 py-0.5 rounded font-mono font-bold text-amber-950">
+                  4242 4242 4242 4242
+                </code>
+              </div>
+            )}
 
             <button
               type="submit"
-              disabled={loading || processing}
+              disabled={loading || processing || !clientSecret}
               className="w-full py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-bold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-md disabled:opacity-50"
             >
               {processing ? (
@@ -263,7 +308,7 @@ export function StripePaymentModal({
               ) : (
                 <>
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Confirmar Pagamento R$ {finalAmount.toFixed(2).replace('.', ',')}</span>
+                  <span>Confirmar Pagamento {formatBRL(displayedAmount)}</span>
                 </>
               )}
             </button>
@@ -271,7 +316,7 @@ export function StripePaymentModal({
             <div className="text-center pt-2">
               <p className="text-[11px] text-[#A8A199] flex items-center justify-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                Ambiente de Testes • Criptografia de Ponta a Ponta Stripe
+                {isTestMode ? 'Ambiente de testes • ' : ''}Dados do cartão processados diretamente pelo Stripe
               </p>
             </div>
           </form>

@@ -1,4 +1,3 @@
-'use strict';
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
@@ -12,12 +11,12 @@ import {
   User,
 } from '@/lib/auth';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 import { maskDocument, maskPhone } from '@/lib/masks';
 import {
   Store,
   Plus,
   Search,
-  Users,
   DollarSign,
   TrendingUp,
   LogOut,
@@ -28,12 +27,10 @@ import {
   XCircle,
   Loader2,
   Grid,
-  MapPin,
   Phone,
   UserCheck,
   X,
   Building2,
-  Hash,
 } from 'lucide-react';
 
 interface MetricsData {
@@ -72,6 +69,7 @@ export default function SuperAdminPage() {
 
   // Modal State - Exclusão Customizada (Sem window.confirm)
   const [restaurantToDelete, setRestaurantToDelete] = useState<Restaurant | null>(null);
+useEscapeKey(isCreateModalOpen || !!restaurantToDelete, () => {    if (restaurantToDelete) setRestaurantToDelete(null);    else setIsCreateModalOpen(false);  });
   const [deleting, setDeleting] = useState(false);
 
   const fetchDashboardData = useCallback(async () => {
@@ -93,14 +91,17 @@ export default function SuperAdminPage() {
   }, [toast]);
 
   useEffect(() => {
-    const user = getAuthUser();
-    if (!user) {
-      // Se não autenticado, redireciona para o login
-      router.push('/login');
-      return;
-    }
-    setCurrentUser(user);
-    fetchDashboardData();
+    const initialLoad = setTimeout(() => {
+      const user = getAuthUser();
+      if (!user || !user.is_super_admin) {
+        router.push('/login');
+        return;
+      }
+      setCurrentUser(user);
+      void fetchDashboardData();
+    }, 0);
+
+    return () => clearTimeout(initialLoad);
   }, [router, fetchDashboardData]);
 
   const handleLogout = () => {
@@ -592,7 +593,7 @@ export default function SuperAdminPage() {
                     <input
                       type="number"
                       min={1}
-                      max={100}
+                      max={50}
                       value={formData.initial_tables || ''}
                       onChange={(e) => {
                         const val = parseInt(e.target.value);

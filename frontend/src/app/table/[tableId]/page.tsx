@@ -1,40 +1,72 @@
 'use client';
 
-import React, { useState } from 'react';
-import { useParams } from 'next/navigation';
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { SalonHeader } from '@/components/customer/SalonHeader';
 import { EditorialHero } from '@/components/customer/EditorialHero';
 import { QuickActionsBar } from '@/components/customer/QuickActionsBar';
 import { StartHereSection } from '@/components/customer/StartHereSection';
 import { HouseFavoritesSection } from '@/components/customer/HouseFavoritesSection';
 import { ClosingExperienceBanner } from '@/components/customer/ClosingExperienceBanner';
-import { CheckCircle2, User, Smartphone, Utensils, Sparkles } from 'lucide-react';
+import { CheckCircle2, User, Smartphone, Sparkles } from 'lucide-react';
 import { useCustomerSession, Product } from '@/hooks/useCustomerSession';
 import { toast } from '@/components/ui/ToastProvider';
+import { useEscapeKey } from '@/hooks/useEscapeKey';
 
 export default function TableHomePage() {
   const params = useParams();
+  const router = useRouter();
   const tableId = (params?.tableId as string) || '01';
-  const { table, products, loading, checkIn, callWaiter, sendOrder } = useCustomerSession(tableId);
+  const { table, categories, products, loading, error, refresh, checkIn, callWaiter } = useCustomerSession(tableId);
 
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
+useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
   const [startingSession, setStartingSession] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [callingWaiter, setCallingWaiter] = useState(false);
+  const previousStatusRef = useRef<string | undefined>(undefined);
+
+  // Quando o caixa libera a mesa, o tablet volta à tela de boas-vindas para os próximos clientes
+  useEffect(() => {
+    const previousStatus = previousStatusRef.current;
+    previousStatusRef.current = table?.status;
+    if (previousStatus && previousStatus !== 'free' && table?.status === 'free') {
+      const resetTimer = setTimeout(() => {
+        setSessionStarted(false);
+        setShowPreferenceModal(false);
+        setWaiterCalled(false);
+      }, 0);
+      return () => clearTimeout(resetTimer);
+    }
+  }, [table?.status]);
 
   // Mesa é considerada livre se status for 'free' e não houver itens pedidos e a sessão local ainda não foi iniciada
-  const isTableFree = (!sessionStarted) && (!table || table.status === 'free') && (!table?.active_order || table.active_order.items.length === 0);
+  const isTableFree = !sessionStarted && table?.status === 'free' && (!table.active_order || table.active_order.items.length === 0);
 
   const handleStartAttendance = async () => {
     setStartingSession(true);
-    setSessionStarted(true);
-    await checkIn();
+    const result = await checkIn();
     setStartingSession(false);
+    if (result.duplicate) return;
+    if (!result.success) {
+      toast.warning('Atenção', result.message || 'Não foi possível iniciar o atendimento.');
+      return;
+    }
+    setSessionStarted(true);
     setShowPreferenceModal(true);
   };
 
   const handleChooseWaiter = async () => {
-    await callWaiter();
+    if (callingWaiter) return;
+    setCallingWaiter(true);
+    const result = await callWaiter();
+    setCallingWaiter(false);
+    if (result.duplicate) return;
+    if (!result.success) {
+      toast.warning('Atenção', result.message || 'Não foi possível chamar o garçom.');
+      return;
+    }
     setWaiterCalled(true);
     setShowPreferenceModal(false);
     setSessionStarted(true);
@@ -46,9 +78,10 @@ export default function TableHomePage() {
   const handleChooseTablet = () => {
     setShowPreferenceModal(false);
     setSessionStarted(true);
+    router.push(`/table/${tableId}/menu`);
   };
 
-  const dynamicFavorites = products.slice(0, 4).map((p: Product) => ({
+  const dynamicFavorites = products.filter((product) => product.available).slice(0, 4).map((p: Product) => ({
     id: p.id,
     name: p.name,
     description: p.description || '',
@@ -63,11 +96,15 @@ export default function TableHomePage() {
         <SalonHeader
           tableNumber={tableId}
           tableStatus={
-            table?.status === 'occupied'
+            error
+              ? 'Indisponível'
+              : loading
+              ? 'Carregando'
+              : table?.status === 'occupied'
               ? 'Mesa ocupada'
               : table?.status === 'bill_requested'
               ? 'Conta solicitada'
-              : 'Mesa livre'
+              : table?.status === 'free' ? 'Mesa livre' : 'Indisponível'
           }
         />
 
@@ -87,7 +124,26 @@ export default function TableHomePage() {
         )}
 
         {/* 1. TELA DE CHEGADA: Se a mesa estiver livre e o cliente acabou de sentar */}
-        {isTableFree && !showPreferenceModal ? (
+        {!table ? (
+          <main className="max-w-2xl mx-auto px-6 py-16 text-center flex flex-col items-center justify-center min-h-[70vh]">
+            <h1 className="text-3xl font-serif font-bold text-[#191817] mb-3">
+              {loading ? 'Carregando mesa...' : 'Mesa indisponível'}
+            </h1>
+            {!loading && (
+              <>
+                <p className="text-sm text-[#6E6760] max-w-md mb-6">
+                  {error || 'Não foi possível encontrar esta mesa. Peça ajuda à equipe.'}
+                </p>
+                <button
+                  onClick={() => void refresh()}
+                  className="px-6 py-3 rounded-xl bg-[#C84E1F] text-white font-semibold text-sm cursor-pointer"
+                >
+                  Tentar novamente
+                </button>
+              </>
+            )}
+          </main>
+        ) : isTableFree && !showPreferenceModal ? (
           <main className="max-w-2xl mx-auto px-6 py-16 text-center flex flex-col items-center justify-center min-h-[70vh]">
             <span className="text-xs font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/10 px-3 py-1 rounded-full mb-4">
               Atendimento Digital • ELO
@@ -127,20 +183,12 @@ export default function TableHomePage() {
             />
 
             {/* Categorias */}
-            <StartHereSection tableId={tableId} />
+            <StartHereSection tableId={tableId} categories={categories} />
 
             {/* Mais Pedidos */}
             <HouseFavoritesSection
               tableId={tableId}
               products={dynamicFavorites}
-              onAddToCart={async (product) => {
-                const res = await sendOrder([{ product_id: product.id, quantity: 1 }]);
-                if (res.success) {
-                  toast.success(`${product.name} adicionado e enviado para a cozinha!`, 'Pedido Realizado');
-                } else {
-                  toast.warning(res.message || 'Não foi possível enviar o item.', 'Atenção');
-                }
-              }}
             />
 
             {/* Banner de Fechamento */}

@@ -12,46 +12,12 @@ import {
   Plus,
   Users,
   CreditCard,
-  QrCode,
 } from 'lucide-react';
 import Link from 'next/link';
 import { toast } from '@/components/ui/ToastProvider';
-import { StripePaymentModal } from '@/components/payment/StripePaymentModal';
-
-interface OrderItem {
-  id: number;
-  name: string;
-  quantity: number;
-  price: number;
-  status: 'pending' | 'preparing' | 'ready' | 'delivered';
-  notes?: string;
-}
-
-const INITIAL_ITEMS: OrderItem[] = [
-  {
-    id: 1,
-    name: 'Smash ELO Bacon Duplo',
-    quantity: 2,
-    price: 36.9,
-    status: 'preparing',
-    notes: 'Ponto: Ao ponto • Sem cebola',
-  },
-  {
-    id: 2,
-    name: 'Batata Rústica com Alecrim',
-    quantity: 1,
-    price: 24.5,
-    status: 'ready',
-  },
-  {
-    id: 3,
-    name: 'Soda Italiana de Maracujá',
-    quantity: 2,
-    price: 16.0,
-    status: 'delivered',
-  },
-];
-
+import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { formatBRL } from '@/lib/format';
+import { StripePaymentModal, isStripeConfigured } from '@/components/payment/StripePaymentModal';
 import { useCustomerSession } from '@/hooks/useCustomerSession';
 
 export default function OrderTrackingPage() {
@@ -62,25 +28,47 @@ export default function OrderTrackingPage() {
   const [splitCount, setSplitCount] = useState(2);
   const [includeService, setIncludeService] = useState(true);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
   const [showStripeModal, setShowStripeModal] = useState(false);
   const [requestingBill, setRequestingBill] = useState(false);
 
   const handleOpenBillModal = async () => {
     setRequestingBill(true);
-    await requestBill();
+    const result = await requestBill();
     setRequestingBill(false);
+    if (result.duplicate) return;
+    if (!result.success) {
+      toast.warning('Atenção', result.message || 'Não foi possível pedir a conta.');
+      return;
+    }
+    toast.success('Conta solicitada', 'O caixa já foi avisado e a equipe está a caminho.');
     setShowPaymentModal(true);
   };
 
   // Itens reais da comanda ativa no banco
   const activeOrder = table?.active_order;
   const items = activeOrder?.items || [];
+  const orderStatus = activeOrder?.status ?? 'pending';
 
-  // Cálculos financeiros reais da comanda
-  const subtotal = Number(activeOrder?.subtotal || items.reduce((acc, item) => acc + item.unit_price * item.quantity, 0));
-  const serviceFee = includeService ? subtotal * 0.1 : 0;
-  const total = subtotal + serviceFee;
-  const totalPerPerson = splitCount > 0 ? total / splitCount : total;
+  // Cálculos financeiros em centavos, com a mesma regra de arredondamento do backend
+  const subtotalCents = Math.round(Number(activeOrder?.subtotal || items.reduce((acc, item) => acc + item.unit_price * item.quantity, 0)) * 100);
+  const serviceFeeCents = includeService ? Math.round(subtotalCents * 0.1) : 0;
+  const subtotal = subtotalCents / 100;
+  const serviceFee = serviceFeeCents / 100;
+  const total = (subtotalCents + serviceFeeCents) / 100;
+  // Arredonda para cima: a soma das partes nunca fica abaixo do total
+  const totalPerPerson = Math.ceil((subtotalCents + serviceFeeCents) / splitCount) / 100;
+
+  const kitchenSummary =
+    items.length === 0
+      ? { title: 'Comanda aberta', description: 'Escolha seus pratos no cardápio para começar.' }
+      : orderStatus === 'ready'
+      ? { title: 'Pedido pronto', description: 'Seus pratos já estão saindo da cozinha.' }
+      : orderStatus === 'delivered'
+      ? { title: 'Pedido servido', description: 'Bom apetite! Peça mais quando quiser.' }
+      : orderStatus === 'preparing'
+      ? { title: 'Cozinha em preparo', description: 'Seus pedidos estão sendo preparados pela equipe.' }
+      : { title: 'Pedido recebido', description: 'A cozinha já recebeu seu pedido e vai começar em instantes.' };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -159,17 +147,19 @@ export default function OrderTrackingPage() {
                 <ChefHat className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-[#191817]">Cozinha em preparo</h3>
-                <p className="text-[11px] text-[#6E6760]">Seus pedidos estão sendo preparados pela equipe</p>
+                <h3 className="text-xs font-bold text-[#191817]">{kitchenSummary.title}</h3>
+                <p className="text-[11px] text-[#6E6760]">{kitchenSummary.description}</p>
               </div>
             </div>
-            <div className="text-right">
-              <span className="text-[10px] text-[#6E6760]">Tempo estimado</span>
-              <p className="text-xs font-semibold text-[#191817] flex items-center gap-1">
-                <Clock className="w-3.5 h-3.5 text-[#C84E1F]" />
-                ~ 12-15 min
-              </p>
-            </div>
+            {items.length > 0 && (orderStatus === 'pending' || orderStatus === 'confirmed' || orderStatus === 'preparing') && (
+              <div className="text-right">
+                <span className="text-[10px] text-[#6E6760]">Tempo estimado</span>
+                <p className="text-xs font-semibold text-[#191817] flex items-center gap-1">
+                  <Clock className="w-3.5 h-3.5 text-[#C84E1F]" />
+                  ~ 12-15 min
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Lista de Itens da Comanda */}
@@ -185,7 +175,7 @@ export default function OrderTrackingPage() {
 
             {items.length === 0 && (
               <div className="p-8 rounded-2xl bg-white border border-[#EAE6E1] text-center text-xs text-[#6E6760]">
-                Nenhum item pedido ainda nesta comanda.
+                {loading ? 'Carregando comanda...' : 'Nenhum item pedido ainda nesta comanda.'}
               </div>
             )}
 
@@ -204,15 +194,15 @@ export default function OrderTrackingPage() {
                   {item.notes && (
                     <p className="text-[11px] text-[#6E6760] mb-2 pl-7">{item.notes}</p>
                   )}
-                  <div className="pl-7">{getStatusBadge(activeOrder?.status || 'pending')}</div>
+                  <div className="pl-7">{getStatusBadge(item.status ?? activeOrder?.status ?? 'pending')}</div>
                 </div>
 
                 <div className="text-right">
                   <span className="text-xs font-bold text-[#191817]">
-                    R$ {Number(item.subtotal || item.unit_price * item.quantity).toFixed(2).replace('.', ',')}
+                    {formatBRL(Number(item.subtotal || item.unit_price * item.quantity))}
                   </span>
                   <p className="text-[10px] text-[#6E6760]">
-                    R$ {Number(item.unit_price).toFixed(2).replace('.', ',')} un
+                    {formatBRL(Number(item.unit_price))} un
                   </p>
                 </div>
               </div>
@@ -229,14 +219,20 @@ export default function OrderTrackingPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setSplitCount((prev) => Math.max(1, prev - 1))}
-                  className="w-7 h-7 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] font-bold text-sm flex items-center justify-center transition-colors"
+                  disabled={splitCount <= 1}
+                  aria-label="Diminuir número de pessoas"
+                  className="w-7 h-7 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] font-bold text-sm flex items-center justify-center transition-colors disabled:opacity-40"
                 >
                   -
                 </button>
-                <span className="text-xs font-semibold px-2">{splitCount} pessoas</span>
+                <span className="text-xs font-semibold px-2" aria-live="polite">
+                  {splitCount} {splitCount === 1 ? 'pessoa' : 'pessoas'}
+                </span>
                 <button
-                  onClick={() => setSplitCount((prev) => prev + 1)}
-                  className="w-7 h-7 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] font-bold text-sm flex items-center justify-center transition-colors"
+                  onClick={() => setSplitCount((prev) => Math.min(20, prev + 1))}
+                  disabled={splitCount >= 20}
+                  aria-label="Aumentar número de pessoas"
+                  className="w-7 h-7 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] font-bold text-sm flex items-center justify-center transition-colors disabled:opacity-40"
                 >
                   +
                 </button>
@@ -246,7 +242,7 @@ export default function OrderTrackingPage() {
             <div className="pt-3 border-t border-[#F2EFEA] space-y-1.5 text-xs">
               <div className="flex justify-between text-[#6E6760]">
                 <span>Subtotal dos itens</span>
-                <span>R$ {subtotal.toFixed(2).replace('.', ',')}</span>
+                <span>{formatBRL(subtotal)}</span>
               </div>
 
               <div className="flex justify-between items-center text-[#6E6760]">
@@ -259,18 +255,18 @@ export default function OrderTrackingPage() {
                   />
                   <span>Taxa de serviço da equipe (10%)</span>
                 </label>
-                <span>R$ {serviceFee.toFixed(2).replace('.', ',')}</span>
+                <span>{formatBRL(serviceFee)}</span>
               </div>
 
               <div className="flex justify-between text-sm font-bold text-[#191817] pt-2 border-t border-[#F2EFEA]">
                 <span>Total da mesa</span>
-                <span>R$ {total.toFixed(2).replace('.', ',')}</span>
+                <span>{formatBRL(total)}</span>
               </div>
 
               {splitCount > 1 && (
                 <div className="flex justify-between text-xs font-bold text-[#C84E1F] pt-1">
                   <span>Por pessoa ({splitCount}x)</span>
-                  <span>R$ {totalPerPerson.toFixed(2).replace('.', ',')}</span>
+                  <span>{formatBRL(totalPerPerson)}</span>
                 </div>
               )}
             </div>
@@ -291,11 +287,11 @@ export default function OrderTrackingPage() {
 
           <button
             onClick={handleOpenBillModal}
-            disabled={requestingBill}
+            disabled={requestingBill || items.length === 0}
             className="flex-[2] py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <CreditCard className="w-4 h-4" />
-            <span>{requestingBill ? 'Solicitando conta...' : `Pedir conta (R$ ${total.toFixed(2).replace('.', ',')})`}</span>
+            <span>{requestingBill ? 'Solicitando conta...' : `Pedir conta (${formatBRL(total)})`}</span>
           </button>
         </div>
       </footer>
@@ -306,22 +302,22 @@ export default function OrderTrackingPage() {
           <div className="w-full max-w-md bg-white rounded-2xl border border-[#EAE6E1] p-6 shadow-xl text-center">
             <h3 className="text-base font-bold text-[#191817] mb-1">Pagamento da Mesa {tableId}</h3>
             <p className="text-xs text-[#6E6760] mb-4">
-              Escaneie o código PIX para efetuar o pagamento direto ou chame o garçom para a máquina de cartão.
+              {isStripeConfigured ? 'Pague agora com cartão pelo tablet ou aguarde a equipe para PIX, maquininha ou dinheiro.' : 'A equipe já foi avisada e vem até a mesa para receber via PIX, maquininha ou dinheiro.'}
             </p>
 
-            {/* QR Code */}
-            <div className="w-44 h-44 mx-auto rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] p-3 flex items-center justify-center mb-4">
-              <QrCode className="w-full h-full text-[#191817]" />
-            </div>
-
-            <div className="text-xs text-[#6E6760] mb-5">
-              <p className="font-bold text-[#191817] text-xl mb-1">
-                R$ {total.toFixed(2).replace('.', ',')}
+            <div className="text-xs text-[#6E6760] mb-5 p-4 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1]">
+              <p className="font-bold text-[#191817] text-2xl mb-1">
+                {formatBRL(total)}
               </p>
-              <p className="text-[11px] text-[#6E6760]">Chave Copia e Cola disponível</p>
+              {splitCount > 1 && (
+                <p className="text-[11px] text-[#6E6760]">
+                  {splitCount} pessoas • {formatBRL(totalPerPerson)} cada
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
+              {isStripeConfigured && (
               <button
                 onClick={() => {
                   setShowPaymentModal(false);
@@ -332,20 +328,12 @@ export default function OrderTrackingPage() {
                 <CreditCard className="w-4 h-4 text-[#C84E1F]" />
                 Pagar com Cartão (Stripe Online)
               </button>
-              <button
-                onClick={() => {
-                  toast.success('Chave PIX copiada para a área de transferência!', 'Código PIX');
-                  setShowPaymentModal(false);
-                }}
-                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer"
-              >
-                Copiar código PIX
-              </button>
+              )}
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="w-full py-2.5 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] text-xs font-medium transition-colors cursor-pointer"
+                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer"
               >
-                Fechar / Pagar na máquina
+                Pagar com a equipe (PIX, maquininha ou dinheiro)
               </button>
             </div>
           </div>
@@ -360,7 +348,7 @@ export default function OrderTrackingPage() {
         amount={total}
         includeService={includeService}
         onSuccess={() => {
-          toast.success('Pagamento efetuado com sucesso via cartão!', 'Conta Liquidada');
+          toast.success('Conta Liquidada', 'Pagamento efetuado com sucesso via cartão!');
           setShowStripeModal(false);
           refresh();
         }}

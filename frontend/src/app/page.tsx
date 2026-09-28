@@ -1,10 +1,23 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Smartphone, Store, ChefHat, ArrowUpRight } from 'lucide-react';
+import { api } from '@/lib/api';
 
 export default function RootHomePage() {
+  const [connectionStatus, setConnectionStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  useEffect(() => {
+    let active = true;
+    api.get('/categories').then(
+      () => { if (active) setConnectionStatus('online'); },
+      () => { if (active) setConnectionStatus('offline'); },
+    );
+
+    return () => { active = false; };
+  }, []);
+
   return (
     <main className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15">
       {/* Top Header */}
@@ -12,15 +25,15 @@ export default function RootHomePage() {
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="text-xs text-[#6E6760] font-normal border-l border-[#D8D2C9] pl-3">
+            <span className="hidden sm:inline text-xs text-[#6E6760] font-normal border-l border-[#D8D2C9] pl-3">
               Operação gastronômica
             </span>
           </div>
 
           <div className="flex items-center gap-4 text-xs text-[#6E6760]">
             <div className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-[#2D6A4F]" />
-              <span>Sistema conectado</span>
+              <span className={`w-2 h-2 rounded-full ${connectionStatus === 'online' ? 'bg-[#2D6A4F]' : connectionStatus === 'offline' ? 'bg-red-600' : 'bg-[#9C948A]'}`} />
+              <span>{connectionStatus === 'online' ? 'Sistema conectado' : connectionStatus === 'offline' ? 'Sistema indisponível' : 'Verificando sistema'}</span>
             </div>
             <Link
               href="/login"

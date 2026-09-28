@@ -1,4 +1,3 @@
-'use strict';
 'use client';
 
 import React, { useState } from 'react';
@@ -45,12 +44,12 @@ export default function LoginPage() {
         `Bem-vindo(a), ${user.name || 'Operador'}.`
       );
 
+      const requestedPath = new URLSearchParams(window.location.search).get('redirect');
+      const isSafeRedirect = !!requestedPath && requestedPath.startsWith('/') && !requestedPath.startsWith('//');
+      const defaultPath = user.is_super_admin ? '/superadmin' : user.role?.name === 'chef' ? '/kitchen' : '/counter';
+
       setTimeout(() => {
-        if (user.is_super_admin) {
-          router.push('/superadmin');
-        } else {
-          router.push('/counter');
-        }
+        router.push(isSafeRedirect ? requestedPath : defaultPath);
       }, 300);
     } catch (err: unknown) {
       const errorObj = err as { response?: { data?: { message?: string; errors?: Record<string, string[]> } } };
@@ -73,7 +72,7 @@ export default function LoginPage() {
           <span className="w-2 h-2 rounded-full bg-emerald-600" />
           <span className="font-mono text-[11px] font-medium">Sistema Operacional</span>
         </div>
-        <span className="font-mono text-[11px] text-[#57534E]">v2.4.0</span>
+        <span className="font-mono text-[11px] text-[#57534E]">v1.0</span>
       </header>
 
       {/* Main Authentication Card */}
@@ -97,11 +96,12 @@ export default function LoginPage() {
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Email Field */}
             <div>
-              <label className="block text-xs font-medium text-[#44403C] mb-1.5">
+              <label htmlFor="login-email" className="block text-xs font-medium text-[#44403C] mb-1.5">
                 E-mail de acesso
               </label>
               <div className="relative">
                 <input
+                  id="login-email"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -116,12 +116,13 @@ export default function LoginPage() {
             {/* Password Field */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-medium text-[#44403C]">
+                <label htmlFor="login-password" className="block text-xs font-medium text-[#44403C]">
                   Senha
                 </label>
               </div>
               <div className="relative">
                 <input
+                  id="login-password"
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
