@@ -14,6 +14,10 @@ class OrderPolicy
 
     public function view(User $user, Order $order): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $order->restaurant_id)) {
+            return false;
+        }
+
         if (in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'chef', 'cashier', 'super_admin'])) {
             return true;
         }
@@ -32,6 +36,10 @@ class OrderPolicy
 
     public function update(User $user, Order $order): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $order->restaurant_id)) {
+            return false;
+        }
+
         if (in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin'])) {
             return true;
         }
@@ -50,6 +58,10 @@ class OrderPolicy
 
     public function delete(User $user, Order $order): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $order->restaurant_id)) {
+            return false;
+        }
+
         return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

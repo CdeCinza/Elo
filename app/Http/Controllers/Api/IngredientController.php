@@ -7,6 +7,7 @@ use App\Http\Requests\Ingredient\StoreIngredientRequest;
 use App\Http\Requests\Ingredient\UpdateIngredientRequest;
 use App\Http\Resources\IngredientResource;
 use App\Models\Ingredient;
+use App\Models\Restaurant;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -22,6 +23,10 @@ class IngredientController extends Controller
 
         $query = Ingredient::query();
 
+        if (! $request->user()->isSuperAdmin()) {
+            $query->where('restaurant_id', $request->user()->restaurant_id);
+        }
+
         if ($request->filled('search')) {
             $query->where('name', 'like', "%{$request->search}%");
         }
@@ -31,14 +36,25 @@ class IngredientController extends Controller
             $query->whereColumn('stock_qty', '<=', 'min_stock_alert');
         }
 
-        $ingredients = $query->orderBy('name')->paginate($request->input('per_page', 15));
+        $ingredients = $query->orderBy('name')->paginate($this->perPage($request));
 
         return IngredientResource::collection($ingredients);
     }
 
     public function store(StoreIngredientRequest $request): JsonResponse
     {
-        $ingredient = Ingredient::create($request->validated());
+        $restaurantId = $request->user()->isSuperAdmin()
+            ? (int) $request->header('X-Restaurant-Id')
+            : $request->user()->restaurant_id;
+
+        if (! $restaurantId || ! Restaurant::whereKey($restaurantId)->exists()) {
+            return response()->json(['message' => 'Selecione um restaurante válido.'], 422);
+        }
+
+        $ingredient = Ingredient::create([
+            ...$request->validated(),
+            'restaurant_id' => $restaurantId,
+        ]);
 
         return response()->json([
             'message' => 'Ingrediente cadastrado no estoque com sucesso.',

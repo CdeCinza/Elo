@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Events\OrderStatusChanged;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
@@ -32,9 +33,10 @@ class OrderApiTest extends TestCase
 
         $waiterRole = Role::create(['name' => 'waiter', 'label' => 'Garçom']);
         $chefRole = Role::create(['name' => 'chef', 'label' => 'Cozinheiro']);
+        $restaurant = Restaurant::factory()->create();
 
-        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id]);
-        $this->chef = User::factory()->create(['role_id' => $chefRole->id]);
+        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id, 'restaurant_id' => $restaurant->id]);
+        $this->chef = User::factory()->create(['role_id' => $chefRole->id, 'restaurant_id' => $restaurant->id]);
 
         $this->table = RestaurantTable::factory()->create(['number' => 'Mesa 10', 'status' => 'free']);
         $this->product = Product::factory()->create(['name' => 'X-Burger', 'price' => 30.00, 'available' => true]);
@@ -123,5 +125,24 @@ class OrderApiTest extends TestCase
             ->assertJsonPath('order.status', 'delivered');
 
         $this->assertDatabaseHas('restaurant_tables', ['id' => $this->table->id, 'status' => 'free']);
+    }
+
+    public function test_order_listing_tolerates_invalid_per_page(): void
+    {
+        $this->actingAs($this->waiter, 'sanctum')
+            ->getJson('/api/v1/orders?per_page=abc')
+            ->assertOk()
+            ->assertJsonPath('meta.per_page', 15);
+    }
+
+    public function test_order_with_absurd_quantity_is_a_validation_error(): void
+    {
+        $this->actingAs($this->waiter, 'sanctum')
+            ->postJson('/api/v1/orders', [
+                'type' => 'takeout',
+                'items' => [['product_id' => $this->product->id, 'quantity' => 100000000]],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('items.0.quantity');
     }
 }

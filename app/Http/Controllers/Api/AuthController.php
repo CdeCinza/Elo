@@ -17,10 +17,23 @@ class AuthController extends Controller
 {
     public function register(RegisterRequest $request): JsonResponse
     {
+        $actor = $request->user();
         $roleName = $request->input('role', 'waiter');
-        $role = Role::where('name', $roleName)->first();
+        $role = Role::where('name', $roleName)->firstOrFail();
+        $restaurantId = $actor->isSuperAdmin()
+            ? $request->integer('restaurant_id')
+            : $actor->restaurant_id;
+
+        if (! $restaurantId) {
+            return response()->json(['message' => 'Selecione um restaurante para o novo usuário.'], 422);
+        }
+
+        if ($roleName === 'manager' && ! ($actor->isSuperAdmin() || $actor->isRestaurantAdmin())) {
+            return response()->json(['message' => 'Permissão insuficiente para criar gerentes.'], 403);
+        }
 
         $user = User::create([
+            'restaurant_id' => $restaurantId,
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
@@ -45,6 +58,12 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => ['As credenciais fornecidas são inválidas.'],
             ]);
+        }
+
+        if ($user->restaurant?->status === 'suspended') {
+            return response()->json([
+                'message' => 'Este restaurante está suspenso. Entre em contato com o suporte da plataforma.',
+            ], 403);
         }
 
         $deviceName = $request->input('device_name', 'api_token');

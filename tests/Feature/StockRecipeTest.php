@@ -6,6 +6,7 @@ use App\Events\OrderStatusChanged;
 use App\Models\Ingredient;
 use App\Models\Order;
 use App\Models\Product;
+use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,9 +35,10 @@ class StockRecipeTest extends TestCase
 
         $chefRole = Role::create(['name' => 'chef', 'label' => 'Cozinheiro']);
         $waiterRole = Role::create(['name' => 'waiter', 'label' => 'Garçom']);
+        $restaurant = Restaurant::factory()->create();
 
-        $this->chef = User::factory()->create(['role_id' => $chefRole->id]);
-        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id]);
+        $this->chef = User::factory()->create(['role_id' => $chefRole->id, 'restaurant_id' => $restaurant->id]);
+        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id, 'restaurant_id' => $restaurant->id]);
 
         $this->meat = Ingredient::create(['name' => 'Carne 180g', 'stock_qty' => 1.000, 'unit' => 'kg', 'min_stock_alert' => 0.500]);
         $this->bun = Ingredient::create(['name' => 'Pão de Hambúrguer', 'stock_qty' => 10, 'unit' => 'unidade', 'min_stock_alert' => 2]);
@@ -71,6 +73,38 @@ class StockRecipeTest extends TestCase
         $this->assertEquals(8, (float) $this->bun->fresh()->stock_qty);
 
         $this->assertDatabaseHas('activity_logs', ['action' => 'stock_deducted']);
+    }
+
+    public function test_confirmed_order_is_not_deducted_again_and_late_items_are_deducted_when_preparing(): void
+    {
+        $order = Order::factory()->create([
+            'user_id' => $this->waiter->id,
+            'status' => 'pending',
+        ]);
+
+        $order->items()->create([
+            'product_id' => $this->burger->id,
+            'unit_price' => 25.00,
+            'quantity' => 1,
+            'subtotal' => 25.00,
+        ]);
+
+        $this->actingAs($this->chef, 'sanctum')
+            ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => 'confirmed'])
+            ->assertOk();
+        $this->assertEquals(9, (float) $this->bun->fresh()->stock_qty);
+
+        $this->actingAs($this->waiter, 'sanctum')
+            ->postJson("/api/v1/orders/{$order->id}/items", ['product_id' => $this->burger->id, 'quantity' => 2])
+            ->assertOk();
+        $this->assertEquals(9, (float) $this->bun->fresh()->stock_qty);
+
+        $this->actingAs($this->chef, 'sanctum')
+            ->patchJson("/api/v1/orders/{$order->id}/status", ['status' => 'preparing'])
+            ->assertOk();
+
+        $this->assertEquals(7, (float) $this->bun->fresh()->stock_qty);
+        $this->assertEquals(0.460, (float) $this->meat->fresh()->stock_qty);
     }
 
     public function test_order_creation_blocked_when_ingredient_stock_is_insufficient(): void

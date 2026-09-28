@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\OrderStatusChanged;
+use App\Http\Controllers\Concerns\ResolvesRestaurantContext;
 use App\Http\Controllers\Controller;
 use App\Http\Resources\OrderResource;
 use App\Http\Resources\TableResource;
@@ -10,79 +11,43 @@ use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
-use App\Models\Restaurant;
 use App\Models\RestaurantTable;
-use App\Models\User;
+use App\Services\KitchenFlowService;
+use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 class CustomerSessionController extends Controller
 {
-    private function getRestaurantId(Request $request): int
+    use ResolvesRestaurantContext;
+
+    public function __construct(
+        protected KitchenFlowService $kitchenFlow,
+        protected StockService $stockService,
+    ) {}
+
+    /**
+     * Lista as mesas disponíveis para vincular um tablet.
+     */
+    public function getTables(Request $request): JsonResponse
     {
-        if ($request->header('X-Restaurant-Id')) {
-            return (int) $request->header('X-Restaurant-Id');
-        }
-        if ($request->query('restaurant_id')) {
-            return (int) $request->query('restaurant_id');
-        }
-        if ($request->user()?->restaurant_id) {
-            return (int) $request->user()->restaurant_id;
-        }
+        $restaurantId = $this->resolveRestaurantId($request);
+        $tables = RestaurantTable::where('restaurant_id', $restaurantId)
+            ->get(['id', 'number', 'status'])
+            ->sortBy('number', SORT_NATURAL)
+            ->values()
+            ->map(function (RestaurantTable $table): array {
+                $digits = preg_replace('/[^0-9]/', '', $table->number);
 
-        $restaurant = Restaurant::first();
-        if (! $restaurant) {
-            $restaurant = Restaurant::create([
-                'name' => 'Restaurante Principal',
-                'slug' => 'restaurante-principal',
-                'status' => 'active',
-            ]);
-        }
-
-        return (int) $restaurant->id;
-    }
-
-    private function findTable(string $tableNumber, ?int $restaurantId = null): RestaurantTable
-    {
-        $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
-        $intNumber = (int) $cleanNumber;
-        $formattedTwoDigits = sprintf('%02d', $intNumber);
-
-        $restId = $restaurantId;
-        if (! $restId) {
-            $restaurant = Restaurant::first() ?? Restaurant::create([
-                'name' => 'Restaurante Principal',
-                'slug' => 'restaurante-principal',
-                'status' => 'active',
-            ]);
-            $restId = (int) $restaurant->id;
-        }
-
-        $query = RestaurantTable::where('restaurant_id', $restId)
-            ->where(function ($q) use ($tableNumber, $cleanNumber, $formattedTwoDigits, $intNumber) {
-                $q->where('number', $tableNumber)
-                    ->orWhere('number', "Mesa {$cleanNumber}")
-                    ->orWhere('number', "Mesa {$formattedTwoDigits}")
-                    ->orWhere('number', "Mesa {$intNumber}")
-                    ->orWhere('number', (string) $intNumber)
-                    ->orWhere('number', $formattedTwoDigits)
-                    ->orWhere('id', $tableNumber);
+                return [
+                    'id' => $table->id,
+                    'number' => $digits === '' ? $table->number : str_pad((string) (int) $digits, 2, '0', STR_PAD_LEFT),
+                    'status' => $table->status,
+                ];
             });
 
-        $table = $query->first();
-
-        if (! $table) {
-            $table = RestaurantTable::firstOrCreate(
-                [
-                    'restaurant_id' => $restId,
-                    'number' => "Mesa {$intNumber}",
-                ],
-                ['capacity' => 4, 'status' => 'free']
-            );
-        }
-
-        return $table;
+        return response()->json(['tables' => $tables]);
     }
 
     /**
@@ -90,8 +55,8 @@ class CustomerSessionController extends Controller
      */
     public function getTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
         $table->load(['activeOrder.items.product']);
 
         return response()->json([
@@ -107,62 +72,70 @@ class CustomerSessionController extends Controller
         $request->validate([
             'items' => 'required|array|min:1',
             'items.*.product_id' => 'required|exists:products,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.quantity' => 'required|integer|min:1|max:999',
             'items.*.notes' => 'nullable|string|max:255',
         ]);
 
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
-
-        // Pega o atendente/garçom padrão ou cria um usuário sistema para a comanda
-        $defaultUser = User::first() ?? User::factory()->create();
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         try {
-            $order = DB::transaction(function () use ($table, $defaultUser, $request) {
+            $lines = [];
+            foreach ($request->items as $itemData) {
+                $product = Product::with('ingredients')
+                    ->where('restaurant_id', $table->restaurant_id)
+                    ->findOrFail($itemData['product_id']);
+
+                if (! $product->available) {
+                    throw new \InvalidArgumentException("O produto '{$product->name}' não está disponível.");
+                }
+
+                $lines[] = [
+                    'product' => $product,
+                    'quantity' => (int) $itemData['quantity'],
+                    'notes' => $itemData['notes'] ?? null,
+                ];
+            }
+
+            $this->stockService->ensureAvailable($lines);
+
+            $order = DB::transaction(function () use ($table, $request, $lines) {
                 // Se a mesa já tiver comanda ativa, anexa a ela; senão cria uma nova
                 $order = $table->activeOrder ?? Order::create([
-                    'restaurant_id' => $table->restaurant_id ?? $defaultUser->restaurant_id,
+                    'restaurant_id' => $table->restaurant_id,
                     'table_id' => $table->id,
-                    'user_id' => $defaultUser->id,
+                    'user_id' => null,
                     'type' => 'dine_in',
                     'status' => 'pending',
                     'subtotal' => 0.00,
                     'total' => 0.00,
                 ]);
 
-                foreach ($request->items as $itemData) {
-                    $product = Product::with('ingredients')->findOrFail($itemData['product_id']);
-
-                    if (! $product->available) {
-                        throw new \InvalidArgumentException("O produto '{$product->name}' não está disponível.");
-                    }
-
-                    $itemSubtotal = $product->price * $itemData['quantity'];
-
+                foreach ($lines as $line) {
                     OrderItem::create([
                         'order_id' => $order->id,
-                        'product_id' => $product->id,
-                        'unit_price' => $product->price,
-                        'quantity' => $itemData['quantity'],
-                        'subtotal' => $itemSubtotal,
-                        'notes' => $itemData['notes'] ?? null,
+                        'product_id' => $line['product']->id,
+                        'unit_price' => $line['product']->price,
+                        'quantity' => $line['quantity'],
+                        'subtotal' => round((float) $line['product']->price * $line['quantity'], 2),
+                        'notes' => $line['notes'],
                     ]);
                 }
 
                 $newSubtotal = (float) $order->items()->sum('subtotal');
-                $orderUpdate = [
+                $order->update([
                     'subtotal' => $newSubtotal,
                     'total' => $newSubtotal,
-                ];
-                if ($order->status === 'ready' || $order->status === 'delivered') {
-                    $orderUpdate['status'] = 'pending';
-                }
-                $order->update($orderUpdate);
+                ]);
+                $this->kitchenFlow->syncOrderStatus($order);
 
-                $table->update(['status' => 'occupied']);
+                if ($table->status !== 'bill_requested') {
+                    $table->update(['status' => 'occupied']);
+                }
 
                 ActivityLog::create([
-                    'user_id' => $defaultUser->id,
+                    'restaurant_id' => $table->restaurant_id,
+                    'user_id' => null,
                     'subject_type' => Order::class,
                     'subject_id' => $order->id,
                     'action' => 'customer_placed_order',

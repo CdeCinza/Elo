@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\OrderStatusChanged;
+use App\Http\Controllers\Concerns\ResolvesRestaurantContext;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Order;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Log;
 
 class StripePaymentController extends Controller
 {
+    use ResolvesRestaurantContext;
+
     public function __construct(
         protected StripePaymentService $stripeService
     ) {}
@@ -33,22 +36,16 @@ class StripePaymentController extends Controller
 
         $order = null;
         $table = null;
+        $restaurantId = $this->resolveRestaurantId($request);
 
         if (! empty($validated['order_id'])) {
-            $order = Order::with('items')->find($validated['order_id']);
+            $order = Order::with('items')->where('restaurant_id', $restaurantId)->find($validated['order_id']);
             $table = $order?->table;
         } elseif (! empty($validated['table_number'])) {
-            $cleanNumber = preg_replace('/[^0-9]/', '', $validated['table_number']);
-            $intNumber = (int) $cleanNumber;
-
-            $table = RestaurantTable::where('number', $validated['table_number'])
-                ->orWhere('number', "Mesa {$cleanNumber}")
-                ->orWhere('number', "Mesa {$intNumber}")
-                ->orWhere('number', sprintf('%02d', $intNumber))
-                ->first();
+            $table = $this->tableNumberQuery($validated['table_number'], $restaurantId)->first();
 
             if (! $table) {
-                return response()->json(['message' => "Mesa '{$validated['table_number']}' no encontrada."], 404);
+                return response()->json(['message' => "Mesa '{$validated['table_number']}' não encontrada."], 404);
             }
 
             $order = $table->activeOrder;
@@ -56,8 +53,16 @@ class StripePaymentController extends Controller
 
         if (! $order || $order->items()->count() === 0) {
             return response()->json([
-                'message' => 'Nenhum pedido ativo ou itens encontrados para cobrana nesta mesa.',
+                'message' => 'Nenhum pedido ativo ou itens encontrados para cobrança nesta mesa.',
             ], 422);
+        }
+
+        if ($order->status === 'canceled') {
+            return response()->json(['message' => 'Este pedido foi cancelado e não pode ser cobrado.'], 422);
+        }
+
+        if ($order->payment()->where('status', 'paid')->exists()) {
+            return response()->json(['message' => 'Este pedido já foi pago.'], 422);
         }
 
         $subtotal = (float) $order->items()->sum('subtotal');
@@ -95,13 +100,13 @@ class StripePaymentController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'No foi possvel inicializar o pagamento no Stripe: '.$e->getMessage(),
+                'message' => 'Não foi possível inicializar o pagamento no Stripe. Tente novamente em instantes.',
             ], 500);
         }
     }
 
     /**
-     * 2. Confirmao do pagamento aps finalizao no Stripe Elements
+     * 2. Confirmação do pagamento após finalização no Stripe Elements
      */
     public function confirmPayment(Request $request): JsonResponse
     {
@@ -116,27 +121,35 @@ class StripePaymentController extends Controller
 
             if (($intent['status'] ?? '') !== 'succeeded') {
                 return response()->json([
-                    'message' => 'O pagamento ainda no foi concludo no Stripe. Status atual: '.($intent['status'] ?? 'desconhecido'),
+                    'message' => 'O pagamento ainda não foi concluído no Stripe. Status atual: '.($intent['status'] ?? 'desconhecido'),
                 ], 400);
             }
 
-            $orderId = $validated['order_id'] ?? ($intent['metadata']['order_id'] ?? null);
-            $order = $orderId ? Order::find($orderId) : null;
-
-            if (! $order && ! empty($validated['table_number'])) {
-                $table = RestaurantTable::where('number', $validated['table_number'])
-                    ->orWhere('number', 'like', "%{$validated['table_number']}%")
-                    ->first();
-                $order = $table?->activeOrder;
+            $orderId = $intent['metadata']['order_id'] ?? null;
+            if (! $orderId || (isset($validated['order_id']) && (string) $validated['order_id'] !== (string) $orderId)) {
+                return response()->json(['message' => 'O pagamento não corresponde ao pedido informado.'], 422);
             }
 
+            $order = Order::find($orderId);
+
             if (! $order) {
-                return response()->json(['message' => 'Pedido correspondente no encontrado.'], 404);
+                return response()->json(['message' => 'Pedido correspondente não encontrado.'], 404);
             }
 
             $table = $order->table;
             $amountInCents = $intent['amount_received'] ?? $intent['amount'] ?? 0;
             $paidAmount = round($amountInCents / 100, 2);
+            if (! $this->matchesOrderAmount($order, $intent, $paidAmount)) {
+                return response()->json(['message' => 'O valor pago não corresponde ao valor atual do pedido.'], 422);
+            }
+
+            $existingPayment = Payment::where('transaction_id', $intent['id'])->first();
+            if ($existingPayment && $existingPayment->order_id !== $order->id) {
+                return response()->json(['message' => 'Pagamento já vinculado a outro pedido.'], 422);
+            }
+            if ($order->payment()->where('status', 'paid')->where('transaction_id', '!=', $intent['id'])->exists()) {
+                return response()->json(['message' => 'Este pedido já foi pago.'], 422);
+            }
 
             DB::transaction(function () use ($order, $table, $intent, $paidAmount) {
                 // Registro de pagamento idempotente
@@ -179,13 +192,13 @@ class StripePaymentController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Erro ao processar confirmao de pagamento: '.$e->getMessage(),
+                'message' => 'Não foi possível confirmar o pagamento agora. Tente novamente em instantes.',
             ], 500);
         }
     }
 
     /**
-     * 3. Webhook oficial com verificao de assinatura HMAC SHA-256
+     * 3. Webhook oficial com verificação de assinatura HMAC SHA-256
      */
     public function handleWebhook(Request $request): JsonResponse
     {
@@ -193,9 +206,9 @@ class StripePaymentController extends Controller
         $sigHeader = $request->header('Stripe-Signature');
 
         if (! $sigHeader || ! $this->stripeService->verifyWebhookSignature($payload, $sigHeader)) {
-            Log::warning('[StripeWebhook] Tentativa de webhook com assinatura invlida.');
+            Log::warning('[StripeWebhook] Tentativa de webhook com assinatura inválida.');
 
-            return response()->json(['error' => 'Assinatura invlida.'], 400);
+            return response()->json(['error' => 'Assinatura inválida.'], 400);
         }
 
         $event = json_decode($payload, true);
@@ -209,8 +222,25 @@ class StripePaymentController extends Controller
             if ($piId && $orderId) {
                 $order = Order::find($orderId);
                 if ($order) {
+                    $existingPayment = Payment::where('transaction_id', $piId)->first();
+                    if ($existingPayment && $existingPayment->order_id !== $order->id) {
+                        Log::warning('[StripeWebhook] Pagamento vinculado a outro pedido.', ['payment_intent_id' => $piId]);
+
+                        return response()->json(['error' => 'Pagamento vinculado a outro pedido.'], 422);
+                    }
+                    if ($order->payment()->where('status', 'paid')->where('transaction_id', '!=', $piId)->exists()) {
+                        Log::warning('[StripeWebhook] Pedido já pago por outra transação.', ['order_id' => $order->id]);
+
+                        return response()->json(['error' => 'Pedido já pago.'], 422);
+                    }
+
                     $amountInCents = $intent['amount_received'] ?? $intent['amount'] ?? 0;
                     $paidAmount = round($amountInCents / 100, 2);
+                    if (! $this->matchesOrderAmount($order, $intent, $paidAmount)) {
+                        Log::warning('[StripeWebhook] Valor pago diverge do pedido.', ['order_id' => $order->id]);
+
+                        return response()->json(['error' => 'Valor divergente.'], 422);
+                    }
                     $table = $order->table;
 
                     DB::transaction(function () use ($order, $table, $piId, $paidAmount) {
@@ -238,5 +268,17 @@ class StripePaymentController extends Controller
         }
 
         return response()->json(['received' => true]);
+    }
+
+    private function matchesOrderAmount(Order $order, array $intent, float $paidAmount): bool
+    {
+        if (! isset($intent['metadata']['service_fee'])) {
+            return true;
+        }
+
+        $subtotal = (float) $order->items()->sum('subtotal');
+        $serviceFee = (float) $intent['metadata']['service_fee'];
+
+        return round($subtotal + $serviceFee, 2) === $paidAmount;
     }
 }

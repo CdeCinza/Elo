@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -25,6 +26,13 @@ class AuthTest extends TestCase
 
     public function test_user_can_register_via_api(): void
     {
+        $restaurant = Restaurant::factory()->create();
+        $manager = User::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'role_id' => Role::where('name', 'manager')->firstOrFail()->id,
+        ]);
+
+        $this->actingAs($manager, 'sanctum');
         $response = $this->postJson('/api/v1/auth/register', [
             'name' => 'Garçom Teste',
             'email' => 'garcom@elo.com',
@@ -41,7 +49,29 @@ class AuthTest extends TestCase
                 'token_type',
             ]);
 
-        $this->assertDatabaseHas('users', ['email' => 'garcom@elo.com']);
+        $this->assertDatabaseHas('users', [
+            'email' => 'garcom@elo.com',
+            'restaurant_id' => $restaurant->id,
+        ]);
+    }
+
+    public function test_registration_requires_authentication_and_cannot_assign_admin_role(): void
+    {
+        $this->postJson('/api/v1/auth/register', [])->assertUnauthorized();
+
+        $restaurant = Restaurant::factory()->create();
+        $manager = User::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'role_id' => Role::where('name', 'manager')->firstOrFail()->id,
+        ]);
+
+        $this->actingAs($manager, 'sanctum')->postJson('/api/v1/auth/register', [
+            'name' => 'Administrador indevido',
+            'email' => 'indevido@elo.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => 'super_admin',
+        ])->assertUnprocessable()->assertJsonValidationErrors('role');
     }
 
     public function test_user_can_login_and_receive_token(): void
@@ -76,6 +106,25 @@ class AuthTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['email']);
+    }
+
+    public function test_user_of_suspended_restaurant_cannot_login(): void
+    {
+        $restaurant = Restaurant::factory()->create(['status' => 'suspended']);
+        User::factory()->create([
+            'email' => 'garcom@suspenso.com',
+            'password' => bcrypt('password123'),
+            'role_id' => Role::where('name', 'waiter')->first()->id,
+            'restaurant_id' => $restaurant->id,
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'garcom@suspenso.com',
+            'password' => 'password123',
+        ])->assertForbidden()
+            ->assertJsonPath('message', 'Este restaurante está suspenso. Entre em contato com o suporte da plataforma.');
+
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 
     public function test_authenticated_user_can_get_profile(): void

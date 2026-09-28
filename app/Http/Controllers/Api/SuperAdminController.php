@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Order;
+use App\Models\Payment;
 use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\Role;
@@ -13,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class SuperAdminController extends Controller
 {
@@ -34,9 +36,9 @@ class SuperAdminController extends Controller
 
         $formatted = $restaurants->map(function ($rest) {
             $owner = $rest->users->first();
-            $totalRevenue = (float) Order::where('restaurant_id', $rest->id)
-                ->where('status', '!=', 'canceled')
-                ->sum('total');
+            $totalRevenue = (float) Payment::where('status', 'paid')
+                ->whereHas('order', fn ($query) => $query->where('restaurant_id', $rest->id))
+                ->sum('amount');
 
             return [
                 'id' => $rest->id,
@@ -164,6 +166,13 @@ class SuperAdminController extends Controller
 
         $restaurant->update(array_filter($validated, fn ($val) => ! is_null($val)));
 
+        // Suspensão encerra imediatamente as sessões da equipe do restaurante
+        if ($restaurant->status === 'suspended') {
+            PersonalAccessToken::where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $restaurant->users()->select('id'))
+                ->delete();
+        }
+
         return response()->json([
             'message' => "Restaurante '{$restaurant->name}' atualizado com sucesso.",
             'restaurant' => $restaurant,
@@ -178,7 +187,14 @@ class SuperAdminController extends Controller
         $restaurant = Restaurant::findOrFail($id);
         $name = $restaurant->name;
 
-        $restaurant->delete();
+        DB::transaction(function () use ($restaurant) {
+            // Itens de pedido referenciam produtos sem cascade: remove os pedidos antes do restaurante
+            Order::where('restaurant_id', $restaurant->id)->delete();
+            PersonalAccessToken::where('tokenable_type', User::class)
+                ->whereIn('tokenable_id', $restaurant->users()->select('id'))
+                ->delete();
+            $restaurant->delete();
+        });
 
         return response()->json([
             'message' => "Restaurante '{$name}' removido com sucesso.",
@@ -193,7 +209,7 @@ class SuperAdminController extends Controller
         $totalRestaurants = Restaurant::count();
         $activeRestaurants = Restaurant::where('status', 'active')->count();
         $totalOrders = Order::count();
-        $totalRevenue = (float) Order::where('status', '!=', 'canceled')->sum('total');
+        $totalRevenue = (float) Payment::where('status', 'paid')->sum('amount');
         $totalUsers = User::count();
 
         return response()->json([

@@ -25,7 +25,7 @@ class StripePaymentService
         $amountInCents = (int) round($amount * 100);
 
         if ($amountInCents <= 0) {
-            throw new \InvalidArgumentException('O valor para cobrança nao Stripe deve ser maior que zero.');
+            throw new \InvalidArgumentException('O valor para cobrança no Stripe deve ser maior que zero.');
         }
 
         if (empty($this->secretKey)) {
@@ -77,7 +77,7 @@ class StripePaymentService
                 'body' => $response->json(),
             ]);
 
-            throw new \RuntimeException($response->json('error.message') ?? 'Erro ao consultar pagamento nao Stripe.');
+            throw new \RuntimeException($response->json('error.message') ?? 'Erro ao consultar pagamento no Stripe.');
         }
 
         return $response->json();

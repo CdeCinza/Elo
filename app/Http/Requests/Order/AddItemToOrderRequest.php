@@ -15,7 +15,7 @@ class AddItemToOrderRequest extends FormRequest
     {
         return [
             'product_id' => ['required', 'exists:products,id'],
-            'quantity' => ['required', 'integer', 'min:1'],
+            'quantity' => ['required', 'integer', 'min:1', 'max:999'],
             'notes' => ['nullable', 'string', 'max:255'],
         ];
     }

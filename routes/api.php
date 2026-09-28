@@ -19,7 +19,6 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Rotas Públicas de Autenticação e Cardápio
-Route::post('/v1/auth/register', [AuthController::class, 'register']);
 Route::post('/v1/auth/login', [AuthController::class, 'login']);
 
 Route::get('/v1/categories', [CategoryController::class, 'index']);
@@ -29,6 +28,7 @@ Route::get('/v1/products', [ProductController::class, 'index']);
 Route::get('/v1/products/{product}', [ProductController::class, 'show']);
 
 // Rotas Públicas do Cliente na Mesa (QR Code Salão)
+Route::get('/v1/customer/tables', [CustomerSessionController::class, 'getTables']);
 Route::get('/v1/customer/table/{tableNumber}', [CustomerSessionController::class, 'getTable']);
 Route::post('/v1/customer/table/{tableNumber}/check-in', [PosKdsController::class, 'checkInTable']);
 Route::post('/v1/customer/table/{tableNumber}/call-waiter', [PosKdsController::class, 'callWaiter']);
@@ -36,16 +36,22 @@ Route::post('/v1/customer/table/{tableNumber}/request-bill', [PosKdsController::
 Route::post('/v1/customer/table/{tableNumber}/order', [CustomerSessionController::class, 'placeOrder']);
 
 // Rotas Operacionais de Frente de Caixa (POS)
-Route::get('/v1/pos/tables', [PosKdsController::class, 'getTables']);
-Route::post('/v1/pos/tables', [PosKdsController::class, 'storeTable']);
-Route::put('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'updateTable']);
-Route::delete('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'deleteTable']);
-Route::post('/v1/pos/tables/seed-defaults', [PosKdsController::class, 'seedDefaultTables']);
-Route::post('/v1/pos/tables/{tableNumber}/open', [PosKdsController::class, 'openTable']);
-Route::post('/v1/pos/tables/{tableNumber}/items', [PosKdsController::class, 'addItemToTable']);
-Route::post('/v1/pos/tables/{tableNumber}/close', [PosKdsController::class, 'closeTable']);
-Route::post('/v1/pos/tables/{tableNumber}/clear-waiter', [PosKdsController::class, 'clearWaiterCall']);
-Route::post('/v1/pos/tables/{tableNumber}/reset', [PosKdsController::class, 'resetTable']);
+Route::middleware(['auth:sanctum', 'role:owner,restaurant_admin,manager,waiter,cashier,super_admin'])->group(function () {
+    Route::get('/v1/pos/tables', [PosKdsController::class, 'getTables']);
+    Route::post('/v1/pos/tables/{tableNumber}/open', [PosKdsController::class, 'openTable']);
+    Route::post('/v1/pos/tables/{tableNumber}/items', [PosKdsController::class, 'addItemToTable']);
+    Route::post('/v1/pos/tables/{tableNumber}/close', [PosKdsController::class, 'closeTable']);
+    Route::post('/v1/pos/tables/{tableNumber}/clear-waiter', [PosKdsController::class, 'clearWaiterCall']);
+});
+
+// Gestão estrutural do salão pelo Caixa (somente gerência)
+Route::middleware(['auth:sanctum', 'role:owner,restaurant_admin,manager,super_admin'])->group(function () {
+    Route::post('/v1/pos/tables', [PosKdsController::class, 'storeTable']);
+    Route::post('/v1/pos/tables/seed-defaults', [PosKdsController::class, 'seedDefaultTables']);
+    Route::put('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'updateTable']);
+    Route::delete('/v1/pos/tables/{tableNumber}', [PosKdsController::class, 'deleteTable']);
+    Route::post('/v1/pos/tables/{tableNumber}/reset', [PosKdsController::class, 'resetTable']);
+});
 
 // Rotas de Pagamento Stripe (Online & Balcão)
 Route::post('/v1/payments/stripe/create-intent', [StripePaymentController::class, 'createPaymentIntent']);
@@ -53,11 +59,14 @@ Route::post('/v1/payments/stripe/confirm', [StripePaymentController::class, 'con
 Route::post('/v1/payments/stripe/webhook', [StripePaymentController::class, 'handleWebhook']);
 
 // Rotas Operacionais da Cozinha (KDS)
-Route::get('/v1/kds/orders', [PosKdsController::class, 'getKitchenOrders']);
-Route::patch('/v1/kds/orders/{order}/status', [PosKdsController::class, 'updateOrderStatus']);
+Route::middleware(['auth:sanctum', 'role:owner,restaurant_admin,manager,chef,super_admin'])->group(function () {
+    Route::get('/v1/kds/orders', [PosKdsController::class, 'getKitchenOrders']);
+    Route::patch('/v1/kds/orders/{order}/status', [PosKdsController::class, 'updateOrderStatus']);
+});
 
 // Rotas Protegidas por Autenticação (Sanctum)
 Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
+    Route::post('/auth/register', [AuthController::class, 'register'])->middleware('role:owner,restaurant_admin,manager,super_admin');
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/logout', [AuthController::class, 'logout']);
 
@@ -78,20 +87,11 @@ Route::middleware('auth:sanctum')->prefix('v1')->group(function () {
     Route::apiResource('/ingredients', IngredientController::class);
 
     // Gestão de Restaurantes e Plataforma (Super Admin)
-    Route::prefix('superadmin')->group(function () {
+    Route::middleware('role:super_admin')->prefix('superadmin')->group(function () {
         Route::get('/metrics', [SuperAdminController::class, 'metrics']);
         Route::get('/restaurants', [SuperAdminController::class, 'index']);
         Route::post('/restaurants', [SuperAdminController::class, 'store']);
-        Route::put('/restaurants/{id}', [SuperAdminController::class, 'update']);
-        Route::delete('/restaurants/{id}', [SuperAdminController::class, 'destroy']);
+        Route::put('/restaurants/{id}', [SuperAdminController::class, 'update'])->whereNumber('id');
+        Route::delete('/restaurants/{id}', [SuperAdminController::class, 'destroy'])->whereNumber('id');
     });
-});
-
-// Rotas públicas do Super Admin para conveniência no painel frontend
-Route::prefix('v1/superadmin')->group(function () {
-    Route::get('/metrics', [SuperAdminController::class, 'metrics']);
-    Route::get('/restaurants', [SuperAdminController::class, 'index']);
-    Route::post('/restaurants', [SuperAdminController::class, 'store']);
-    Route::put('/restaurants/{id}', [SuperAdminController::class, 'update']);
-    Route::delete('/restaurants/{id}', [SuperAdminController::class, 'destroy']);
 });

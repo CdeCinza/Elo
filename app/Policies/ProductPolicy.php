@@ -24,11 +24,13 @@ class ProductPolicy
 
     public function update(User $user, Product $product): bool
     {
-        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
+        return ($user->isSuperAdmin() || ($user->restaurant_id !== null && $user->restaurant_id === $product->restaurant_id))
+            && in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 
     public function delete(User $user, Product $product): bool
     {
-        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
+        return ($user->isSuperAdmin() || ($user->restaurant_id !== null && $user->restaurant_id === $product->restaurant_id))
+            && in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

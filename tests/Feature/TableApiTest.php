@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
+use App\Models\Restaurant;
 use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
@@ -22,9 +24,10 @@ class TableApiTest extends TestCase
 
         $managerRole = Role::create(['name' => 'manager', 'label' => 'Gerente']);
         $waiterRole = Role::create(['name' => 'waiter', 'label' => 'Garçom']);
+        $restaurant = Restaurant::factory()->create();
 
-        $this->manager = User::factory()->create(['role_id' => $managerRole->id]);
-        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id]);
+        $this->manager = User::factory()->create(['role_id' => $managerRole->id, 'restaurant_id' => $restaurant->id]);
+        $this->waiter = User::factory()->create(['role_id' => $waiterRole->id, 'restaurant_id' => $restaurant->id]);
     }
 
     public function test_authenticated_staff_can_list_tables(): void
@@ -51,6 +54,25 @@ class TableApiTest extends TestCase
             ->assertJsonPath('table.number', 'Mesa VIP 01');
 
         $this->assertDatabaseHas('restaurant_tables', ['number' => 'Mesa VIP 01']);
+    }
+
+    public function test_same_table_number_is_allowed_in_another_restaurant_and_is_not_visible(): void
+    {
+        $otherRestaurant = Restaurant::factory()->create();
+        $otherTable = RestaurantTable::factory()->create([
+            'restaurant_id' => $otherRestaurant->id,
+            'number' => 'Mesa VIP 01',
+        ]);
+
+        $this->actingAs($this->manager, 'sanctum')
+            ->postJson('/api/v1/tables', [
+                'number' => 'Mesa VIP 01',
+                'capacity' => 4,
+            ])
+            ->assertCreated();
+
+        $this->getJson('/api/v1/tables')->assertJsonCount(1, 'data');
+        $this->getJson("/api/v1/tables/{$otherTable->id}")->assertForbidden();
     }
 
     public function test_waiter_can_open_tab_for_free_table(): void
@@ -90,5 +112,26 @@ class TableApiTest extends TestCase
 
         $response->assertStatus(422)
             ->assertJson(['message' => 'Esta mesa já possui uma comanda/pedido em andamento.']);
+    }
+
+    public function test_table_with_an_open_order_cannot_be_deleted(): void
+    {
+        $table = RestaurantTable::factory()->create([
+            'restaurant_id' => $this->manager->restaurant_id,
+            'status' => 'free',
+        ]);
+        $order = Order::factory()->create([
+            'restaurant_id' => $this->manager->restaurant_id,
+            'table_id' => $table->id,
+            'status' => 'preparing',
+        ]);
+
+        $this->actingAs($this->manager, 'sanctum')
+            ->deleteJson("/api/v1/tables/{$table->id}")
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Esta mesa possui um pedido ativo em aberto.');
+
+        $this->assertDatabaseHas('restaurant_tables', ['id' => $table->id]);
+        $this->assertSame($table->id, $order->fresh()->table_id);
     }
 }

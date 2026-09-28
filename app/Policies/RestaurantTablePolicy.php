@@ -15,6 +15,10 @@ class RestaurantTablePolicy
 
     public function view(User $user, RestaurantTable $table): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $table->restaurant_id)) {
+            return false;
+        }
+
         return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'chef', 'cashier', 'super_admin']);
     }
 
@@ -26,12 +30,20 @@ class RestaurantTablePolicy
 
     public function update(User $user, RestaurantTable $table): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $table->restaurant_id)) {
+            return false;
+        }
+
         // garçom e caixa podem alterar status/abrir comanda, gerência faz tudo
         return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'waiter', 'cashier', 'super_admin']);
     }
 
     public function delete(User $user, RestaurantTable $table): bool
     {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $table->restaurant_id)) {
+            return false;
+        }
+
         return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

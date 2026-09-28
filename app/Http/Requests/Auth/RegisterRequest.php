@@ -17,7 +17,8 @@ class RegisterRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
-            'role' => ['nullable', 'string', 'exists:roles,name'],
+            'role' => ['nullable', 'string', 'in:manager,waiter,chef,cashier'],
+            'restaurant_id' => ['nullable', 'integer', 'exists:restaurants,id'],
         ];
     }
 

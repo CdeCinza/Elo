@@ -45,6 +45,7 @@ class RealCustomerJourneyEndToEndTest extends TestCase
             'email' => 'superadmin@elo.com',
             'name' => 'Super Administrador Elo',
         ]);
+        $this->actingAs($this->superAdmin, 'sanctum');
     }
 
     /**
@@ -58,7 +59,7 @@ class RealCustomerJourneyEndToEndTest extends TestCase
      * 7. Cozinha recebe no KDS, prepara e avança status
      * 8. Cliente pede mais itens na mesma comanda
      * 9. Cliente pede a conta pelo tablet
-     * 10. Caixa fecha a mesa com pagamento (cartão) e libera a mesa
+     * 10. Caixa fecha a mesa com pagamento (Pix) e libera a mesa
      */
     public function test_full_golden_flow_from_superadmin_to_owner_to_customer_and_payment(): void
     {
@@ -283,10 +284,10 @@ class RealCustomerJourneyEndToEndTest extends TestCase
         $this->assertEquals(114.00, (float) $posMesa01Bill['total']);
 
         // ---------------------------------------------------------------------
-        // ETAPA 10: Caixa fecha a comanda com Pagamento (Cartão) e libera mesa
+        // ETAPA 10: Caixa fecha a comanda com Pagamento (Pix) e libera mesa
         // ---------------------------------------------------------------------
         $closeTableRes = $this->withHeaders($headersClient)->postJson('/api/v1/pos/tables/01/close', [
-            'payment_method' => 'credit_card',
+            'payment_method' => 'pix',
         ]);
 
         $closeTableRes->assertOk()
@@ -300,7 +301,7 @@ class RealCustomerJourneyEndToEndTest extends TestCase
 
         $paymentDb = Payment::where('order_id', $orderId)->first();
         $this->assertNotNull($paymentDb);
-        $this->assertEquals('credit_card', $paymentDb->method);
+        $this->assertEquals('pix', $paymentDb->method);
         $this->assertEquals('paid', $paymentDb->status);
         $this->assertEquals(114.00, (float) $paymentDb->amount);
 
@@ -434,6 +435,13 @@ class RealCustomerJourneyEndToEndTest extends TestCase
 
         $headers = ['X-Restaurant-Id' => (string) $restaurant->id];
 
+        RestaurantTable::create([
+            'restaurant_id' => $restaurant->id,
+            'number' => 'Mesa 01',
+            'capacity' => 4,
+            'status' => 'free',
+        ]);
+
         // 1. Tentar pedir produto esgotado
         $soldOutRes = $this->withHeaders($headers)->postJson('/api/v1/customer/table/01/order', [
             'items' => [['product_id' => $soldOutProduct->id, 'quantity' => 1]],
@@ -507,6 +515,14 @@ class RealCustomerJourneyEndToEndTest extends TestCase
         $catB = Category::create(['restaurant_id' => $restB->id, 'name' => 'Hambúrgueres']);
         $burger = Product::create(['restaurant_id' => $restB->id, 'category_id' => $catB->id, 'name' => 'Monster Burger', 'price' => 40.00, 'available' => true]);
         $tableB = RestaurantTable::create(['restaurant_id' => $restB->id, 'number' => 'Mesa 01', 'capacity' => 4, 'status' => 'free']);
+
+        $this->withHeaders(['X-Restaurant-Id' => (string) $restA->id])
+            ->postJson('/api/v1/customer/table/01/order', [
+                'items' => [['product_id' => $burger->id, 'quantity' => 1]],
+            ])
+            ->assertNotFound();
+
+        $this->assertDatabaseMissing('order_items', ['product_id' => $burger->id]);
 
         $headerA = ['X-Restaurant-Id' => (string) $restA->id];
         $headerB = ['X-Restaurant-Id' => (string) $restB->id];

@@ -26,11 +26,13 @@ class CategoryPolicy
 
     public function update(User $user, Category $category): bool
     {
-        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
+        return ($user->isSuperAdmin() || ($user->restaurant_id !== null && $user->restaurant_id === $category->restaurant_id))
+            && in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 
     public function delete(User $user, Category $category): bool
     {
-        return in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
+        return ($user->isSuperAdmin() || ($user->restaurant_id !== null && $user->restaurant_id === $category->restaurant_id))
+            && in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin']);
     }
 }

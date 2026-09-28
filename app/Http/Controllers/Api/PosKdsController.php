@@ -3,89 +3,29 @@
 namespace App\Http\Controllers\Api;
 
 use App\Events\OrderStatusChanged;
+use App\Http\Controllers\Concerns\ResolvesRestaurantContext;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Payment;
 use App\Models\Product;
-use App\Models\Restaurant;
 use App\Models\RestaurantTable;
-use App\Models\User;
+use App\Services\KitchenFlowService;
+use App\Services\StockService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use InvalidArgumentException;
 
 class PosKdsController extends Controller
 {
-    /**
-     * Auxiliar para identificar o restaurante atual a partir da requisição
-     */
-    private function getRestaurantId(Request $request): int
-    {
-        if ($request->header('X-Restaurant-Id')) {
-            return (int) $request->header('X-Restaurant-Id');
-        }
-        if ($request->query('restaurant_id')) {
-            return (int) $request->query('restaurant_id');
-        }
-        if ($request->user()?->restaurant_id) {
-            return (int) $request->user()->restaurant_id;
-        }
+    use ResolvesRestaurantContext;
 
-        $restaurant = Restaurant::first();
-        if (! $restaurant) {
-            $restaurant = Restaurant::create([
-                'name' => 'Restaurante Principal',
-                'slug' => 'restaurante-principal',
-                'status' => 'active',
-            ]);
-        }
-
-        return (int) $restaurant->id;
-    }
-
-    /**
-     * Auxiliar para localizar mesa por número ("01", "1", "Mesa 01", "Mesa 1")
-     */
-    private function findTable(string $tableNumber, ?int $restaurantId = null): RestaurantTable
-    {
-        $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
-        $intNumber = (int) $cleanNumber;
-        $formattedTwoDigits = sprintf('%02d', $intNumber);
-
-        $restId = $restaurantId;
-        if (! $restId) {
-            $restaurant = Restaurant::first() ?? Restaurant::create([
-                'name' => 'Restaurante Principal',
-                'slug' => 'restaurante-principal',
-                'status' => 'active',
-            ]);
-            $restId = (int) $restaurant->id;
-        }
-
-        $query = RestaurantTable::where('restaurant_id', $restId)
-            ->where(function ($q) use ($tableNumber, $cleanNumber, $formattedTwoDigits, $intNumber) {
-                $q->where('number', $tableNumber)
-                    ->orWhere('number', "Mesa {$cleanNumber}")
-                    ->orWhere('number', "Mesa {$formattedTwoDigits}")
-                    ->orWhere('number', "Mesa {$intNumber}")
-                    ->orWhere('id', $tableNumber);
-            });
-
-        $table = $query->first();
-
-        if (! $table) {
-            $table = RestaurantTable::firstOrCreate(
-                [
-                    'restaurant_id' => $restId,
-                    'number' => "Mesa {$cleanNumber}",
-                ],
-                ['capacity' => 4, 'status' => 'free']
-            );
-        }
-
-        return $table;
-    }
+    public function __construct(
+        protected KitchenFlowService $kitchenFlow,
+        protected StockService $stockService,
+    ) {}
 
     /**
      * Normaliza número da mesa para formato de dois dígitos ("01", "08")
@@ -102,18 +42,16 @@ class PosKdsController extends Controller
      */
     public function checkInTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         if ($table->status === 'free') {
             $table->update(['status' => 'occupied']);
         }
 
-        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
-
         ActivityLog::create([
             'restaurant_id' => $restId,
-            'user_id' => $defaultUser->id,
+            'user_id' => null,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
             'action' => 'customer_checked_in',
@@ -135,18 +73,16 @@ class PosKdsController extends Controller
      */
     public function callWaiter(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         if ($table->status === 'free') {
             $table->update(['status' => 'occupied']);
         }
 
-        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
-
         ActivityLog::create([
             'restaurant_id' => $restId,
-            'user_id' => $defaultUser->id,
+            'user_id' => null,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
             'action' => 'waiter_called',
@@ -169,15 +105,20 @@ class PosKdsController extends Controller
      */
     public function requestBill(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
-        $table->update(['status' => 'bill_requested']);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
-        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
+        if (! $table->activeOrder?->items()->exists()) {
+            return response()->json([
+                'message' => 'Não há consumo registrado nesta mesa para solicitar a conta.',
+            ], 422);
+        }
+
+        $table->update(['status' => 'bill_requested']);
 
         ActivityLog::create([
             'restaurant_id' => $restId,
-            'user_id' => $defaultUser->id,
+            'user_id' => null,
             'subject_type' => RestaurantTable::class,
             'subject_id' => $table->id,
             'action' => 'bill_requested',
@@ -199,7 +140,7 @@ class PosKdsController extends Controller
      */
     public function getTables(Request $request): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
+        $restId = $this->resolveRestaurantId($request);
 
         $tables = RestaurantTable::where('restaurant_id', $restId)
             ->with([
@@ -228,20 +169,21 @@ class PosKdsController extends Controller
                 'capacity' => (int) $table->capacity,
                 'status' => $table->status,
                 'waiter_called' => $waiterCalled,
-                'waiter' => $activeOrder?->user?->name ?? 'Garçom Principal',
+                'waiter' => $activeOrder?->user?->name ?? 'Autoatendimento (tablet)',
                 'opened_at' => $activeOrder?->created_at?->format('H:i') ?? $table->updated_at?->format('H:i'),
                 'total' => (float) ($activeOrder?->total ?? 0),
                 'subtotal' => (float) ($activeOrder?->subtotal ?? 0),
                 'items_count' => $items->count(),
-                'items' => $items->map(function ($item) use ($activeOrder) {
+                'items' => $items->map(function ($item) {
                     return [
                         'id' => $item->id,
                         'name' => $item->product?->name ?? 'Item',
                         'quantity' => (int) $item->quantity,
                         'price' => (float) $item->unit_price,
                         'subtotal' => (float) $item->subtotal,
-                        'status' => $activeOrder?->status ?? 'pending',
+                        'status' => $item->status ?? 'pending',
                         'notes' => $item->notes,
+                        'created_at' => $item->created_at?->toIso8601String(),
                     ];
                 })->values()->all(),
             ];
@@ -257,17 +199,15 @@ class PosKdsController extends Controller
      */
     public function openTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
         $table->update(['status' => 'occupied']);
-
-        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
 
         if (! $table->activeOrder) {
             Order::create([
                 'restaurant_id' => $restId,
                 'table_id' => $table->id,
-                'user_id' => $defaultUser->id,
+                'user_id' => $request->user()->id,
                 'type' => 'dine_in',
                 'status' => 'pending',
                 'subtotal' => 0.00,
@@ -288,48 +228,61 @@ class PosKdsController extends Controller
     {
         $request->validate([
             'product_id' => 'required|exists:products,id',
-            'quantity' => 'required|integer|min:1',
+            'quantity' => 'required|integer|min:1|max:999',
             'notes' => 'nullable|string|max:255',
         ]);
 
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
-        $defaultUser = User::where('restaurant_id', $restId)->first() ?? User::first() ?? User::factory()->create();
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
-        $product = Product::findOrFail($request->product_id);
+        $product = Product::where('restaurant_id', $restId)->findOrFail($request->product_id);
         $quantity = (int) $request->quantity;
-        $itemSubtotal = (float) ($product->price * $quantity);
 
-        $order = $table->activeOrder ?? Order::create([
-            'restaurant_id' => $restId,
-            'table_id' => $table->id,
-            'user_id' => $defaultUser->id,
-            'type' => 'dine_in',
-            'status' => 'pending',
-            'subtotal' => 0.00,
-            'total' => 0.00,
-        ]);
-
-        OrderItem::create([
-            'order_id' => $order->id,
-            'product_id' => $product->id,
-            'unit_price' => $product->price,
-            'quantity' => $quantity,
-            'subtotal' => $itemSubtotal,
-            'notes' => $request->notes,
-        ]);
-
-        $newSubtotal = (float) $order->items()->sum('subtotal');
-        $orderUpdate = [
-            'subtotal' => $newSubtotal,
-            'total' => $newSubtotal,
-        ];
-        if ($order->status === 'ready' || $order->status === 'delivered') {
-            $orderUpdate['status'] = 'pending';
+        if (! $product->available) {
+            return response()->json([
+                'message' => "O produto '{$product->name}' está indisponível no momento.",
+            ], 422);
         }
-        $order->update($orderUpdate);
 
-        $table->update(['status' => 'occupied']);
+        try {
+            $this->stockService->ensureAvailable([['product' => $product, 'quantity' => $quantity]]);
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $order = DB::transaction(function () use ($request, $restId, $table, $product, $quantity) {
+            $order = $table->activeOrder ?? Order::create([
+                'restaurant_id' => $restId,
+                'table_id' => $table->id,
+                'user_id' => $request->user()->id,
+                'type' => 'dine_in',
+                'status' => 'pending',
+                'subtotal' => 0.00,
+                'total' => 0.00,
+            ]);
+
+            OrderItem::create([
+                'order_id' => $order->id,
+                'product_id' => $product->id,
+                'unit_price' => $product->price,
+                'quantity' => $quantity,
+                'subtotal' => round((float) $product->price * $quantity, 2),
+                'notes' => $request->notes,
+            ]);
+
+            $newSubtotal = (float) $order->items()->sum('subtotal');
+            $order->update([
+                'subtotal' => $newSubtotal,
+                'total' => $newSubtotal,
+            ]);
+            $this->kitchenFlow->syncOrderStatus($order);
+
+            if ($table->status !== 'bill_requested') {
+                $table->update(['status' => 'occupied']);
+            }
+
+            return $order;
+        });
 
         return response()->json([
             'message' => "Item '{$product->name}' lançado com sucesso na Mesa {$this->normalizeNumber($table->number)}.",
@@ -342,19 +295,30 @@ class PosKdsController extends Controller
      */
     public function closeTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $validated = $request->validate([
+            'payment_method' => 'required|in:cash,pix',
+            'include_service' => 'nullable|boolean',
+        ]);
+
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
         $activeOrder = $table->activeOrder;
 
-        if ($activeOrder) {
-            $paymentMethod = $request->input('payment_method', 'credit_card');
+        $subtotal = $activeOrder ? (float) $activeOrder->items()->sum('subtotal') : 0.0;
+
+        if ($activeOrder && $subtotal <= 0) {
+            // Comanda aberta sem consumo: libera a mesa sem registrar pagamento
+            $activeOrder->update(['status' => 'canceled']);
+        } elseif ($activeOrder) {
+            $paymentMethod = $validated['payment_method'];
+            $serviceFee = ($validated['include_service'] ?? false) ? round($subtotal * 0.10, 2) : 0.00;
 
             Payment::create([
                 'order_id' => $activeOrder->id,
                 'transaction_id' => 'POS-'.strtoupper(uniqid()),
                 'method' => $paymentMethod,
                 'status' => 'paid',
-                'amount' => $activeOrder->total,
+                'amount' => round($subtotal + $serviceFee, 2),
                 'paid_at' => now(),
             ]);
 
@@ -384,26 +348,34 @@ class PosKdsController extends Controller
      */
     public function getKitchenOrders(Request $request): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
+        $restId = $this->resolveRestaurantId($request);
 
         $orders = Order::where('restaurant_id', $restId)
-            ->with(['table', 'items.product.category'])
+            ->with([
+                'table',
+                'items' => fn ($query) => $query->where('status', '!=', 'delivered')->orderBy('id'),
+                'items.product.category',
+            ])
             ->whereIn('status', ['pending', 'confirmed', 'preparing', 'ready'])
-            ->whereHas('items')
-            ->orderBy('created_at', 'asc')
+            ->whereHas('items', fn ($query) => $query->where('status', '!=', 'delivered'))
             ->get();
 
         $mappedOrders = $orders->map(function ($order) {
             $tableNumber = $order->table ? $this->normalizeNumber($order->table->number) : 'Balcão';
-            $minutesAgo = max(0, (int) $order->created_at?->diffInMinutes(now()));
+
+            // Espera contada a partir do item mais antigo que ainda não ficou pronto
+            $waitingItems = $order->items->whereIn('status', ['pending', 'preparing']);
+            $waitingSince = ($waitingItems->isNotEmpty() ? $waitingItems : $order->items)->min('created_at') ?? $order->created_at;
+            $minutesAgo = max(0, (int) $waitingSince?->diffInMinutes(now()));
 
             return [
                 'id' => $order->id,
                 'tableNumber' => $tableNumber,
                 'raw_table_number' => $order->table?->number ?? 'Balcão',
                 'openedAt' => $order->created_at?->format('H:i') ?? 'Agora',
+                'waitingSince' => $waitingSince?->toIso8601String(),
                 'minutesAgo' => $minutesAgo,
-                'status' => $order->status === 'confirmed' ? 'pending' : $order->status,
+                'status' => $this->kitchenFlow->aggregateStage($order->items) ?? 'pending',
                 'items' => $order->items->map(function ($item) {
                     $categoryName = strtolower($item->product?->category?->name ?? '');
                     $productName = strtolower($item->product?->name ?? '');
@@ -422,10 +394,12 @@ class PosKdsController extends Controller
                         'station' => $station,
                         'notes' => $item->notes,
                         'completed' => false,
+                        'status' => $item->status,
+                        'created_at' => $item->created_at?->toIso8601String(),
                     ];
                 })->values()->all(),
             ];
-        });
+        })->sortBy('waitingSince')->values();
 
         return response()->json([
             'orders' => $mappedOrders,
@@ -437,12 +411,24 @@ class PosKdsController extends Controller
      */
     public function updateOrderStatus(Request $request, Order $order): JsonResponse
     {
+        if ($order->restaurant_id !== $this->resolveRestaurantId($request)) {
+            abort(404);
+        }
+
         $request->validate([
-            'status' => 'required|in:pending,confirmed,preparing,ready,delivered,canceled',
+            'status' => 'required|in:preparing,ready,delivered',
+            'from' => 'nullable|in:pending,preparing,ready',
         ]);
 
         $newStatus = $request->status;
-        $order->update(['status' => $newStatus]);
+
+        try {
+            DB::transaction(fn () => $this->kitchenFlow->advance($order, $newStatus, $request->user()?->id, $request->input('from')));
+        } catch (InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $order->refresh()->load('items');
 
         broadcast(new OrderStatusChanged($order))->toOthers();
 
@@ -451,6 +437,10 @@ class PosKdsController extends Controller
             'order' => [
                 'id' => $order->id,
                 'status' => $order->status,
+                'items' => $order->items->map(fn (OrderItem $item): array => [
+                    'id' => $item->id,
+                    'status' => $item->status,
+                ])->values()->all(),
             ],
         ]);
     }
@@ -465,7 +455,7 @@ class PosKdsController extends Controller
             'capacity' => 'nullable|integer|min:1|max:50',
         ]);
 
-        $restId = $this->getRestaurantId($request);
+        $restId = $this->resolveRestaurantId($request);
         $cleanNumber = preg_replace('/[^0-9]/', '', $validated['number']);
 
         if ($cleanNumber !== '') {
@@ -527,8 +517,8 @@ class PosKdsController extends Controller
      */
     public function updateTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         $validated = $request->validate([
             'number' => 'nullable|string|max:50',
@@ -538,6 +528,16 @@ class PosKdsController extends Controller
         if (! empty($validated['number'])) {
             $cleanNumber = preg_replace('/[^0-9]/', '', $validated['number']);
             $formattedName = $cleanNumber !== '' ? "Mesa {$cleanNumber}" : trim($validated['number']);
+
+            $alreadyExists = $this->tableNumberQuery($validated['number'], $restId)->whereKeyNot($table->id)->exists()
+                || RestaurantTable::where('restaurant_id', $restId)->where('number', $formattedName)->whereKeyNot($table->id)->exists();
+
+            if ($alreadyExists) {
+                return response()->json([
+                    'message' => "Já existe uma mesa cadastrada com a numeração '{$formattedName}'.",
+                ], 422);
+            }
+
             $table->number = $formattedName;
         }
 
@@ -564,8 +564,8 @@ class PosKdsController extends Controller
      */
     public function deleteTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         if ($table->status !== 'free') {
             return response()->json([
@@ -592,8 +592,8 @@ class PosKdsController extends Controller
      */
     public function clearWaiterCall(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         ActivityLog::where('restaurant_id', $restId)
             ->where('action', 'waiter_called')
@@ -611,8 +611,8 @@ class PosKdsController extends Controller
      */
     public function resetTable(Request $request, string $tableNumber): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
-        $table = $this->findTable($tableNumber, $restId);
+        $restId = $this->resolveRestaurantId($request);
+        $table = $this->findTableByNumber($tableNumber, $restId);
 
         if ($table->activeOrder) {
             $table->activeOrder->update(['status' => 'canceled']);
@@ -635,7 +635,7 @@ class PosKdsController extends Controller
      */
     public function seedDefaultTables(Request $request): JsonResponse
     {
-        $restId = $this->getRestaurantId($request);
+        $restId = $this->resolveRestaurantId($request);
 
         if (RestaurantTable::where('restaurant_id', $restId)->count() === 0) {
             for ($i = 1; $i <= 10; $i++) {

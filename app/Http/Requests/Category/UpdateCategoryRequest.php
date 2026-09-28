@@ -17,7 +17,7 @@ class UpdateCategoryRequest extends FormRequest
         $categoryId = $this->route('category')?->id ?? $this->route('category');
 
         return [
-            'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('categories', 'name')->ignore($categoryId)],
+            'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('categories', 'name')->where('restaurant_id', $this->route('category')?->restaurant_id)->ignore($categoryId)],
             'description' => ['nullable', 'string'],
             'is_active' => ['boolean'],
         ];

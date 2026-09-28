@@ -17,10 +17,10 @@ class UpdateIngredientRequest extends FormRequest
         $ingredientId = $this->route('ingredient')?->id ?? $this->route('ingredient');
 
         return [
-            'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('ingredients', 'name')->ignore($ingredientId)],
-            'stock_qty' => ['sometimes', 'required', 'numeric', 'min:0'],
+            'name' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('ingredients', 'name')->where('restaurant_id', $this->route('ingredient')?->restaurant_id)->ignore($ingredientId)],
+            'stock_qty' => ['sometimes', 'required', 'numeric', 'min:0', 'max:9999999.999'],
             'unit' => ['sometimes', 'required', 'string', 'max:50'],
-            'min_stock_alert' => ['nullable', 'numeric', 'min:0'],
+            'min_stock_alert' => ['nullable', 'numeric', 'min:0', 'max:9999999.999'],
         ];
     }
 }

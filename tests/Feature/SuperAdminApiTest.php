@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\Payment;
+use App\Models\Product;
 use App\Models\Restaurant;
 use App\Models\Role;
 use App\Models\User;
@@ -47,6 +51,48 @@ class SuperAdminApiTest extends TestCase
         $restaurantsResponse->assertOk()
             ->assertJsonStructure(['restaurants'])
             ->assertJsonCount(3, 'restaurants');
+    }
+
+    public function test_super_admin_routes_reject_unauthenticated_and_regular_users(): void
+    {
+        $this->getJson('/api/v1/superadmin/restaurants')->assertUnauthorized();
+
+        $restaurant = Restaurant::factory()->create();
+        $managerRole = Role::create(['name' => 'manager', 'label' => 'Gerente']);
+        $manager = User::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'role_id' => $managerRole->id,
+        ]);
+
+        $this->actingAs($manager, 'sanctum')
+            ->getJson('/api/v1/superadmin/restaurants')
+            ->assertForbidden();
+    }
+
+    public function test_revenue_counts_only_paid_amounts(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $order = Order::factory()->create([
+            'restaurant_id' => $restaurant->id,
+            'total' => 80.00,
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($this->superAdmin, 'sanctum')
+            ->getJson('/api/v1/superadmin/metrics')
+            ->assertJsonPath('metrics.total_revenue', 0);
+
+        Payment::create([
+            'order_id' => $order->id,
+            'transaction_id' => 'POS-REVENUE-TEST',
+            'method' => 'cash',
+            'status' => 'paid',
+            'amount' => 80.00,
+            'paid_at' => now(),
+        ]);
+
+        $this->getJson('/api/v1/superadmin/metrics')
+            ->assertJsonPath('metrics.total_revenue', 80);
     }
 
     public function test_super_admin_can_create_restaurant_with_owner_and_initial_tables(): void
@@ -101,5 +147,46 @@ class SuperAdminApiTest extends TestCase
         $deleteResponse->assertOk();
 
         $this->assertDatabaseMissing('restaurants', ['id' => $restaurant->id]);
+    }
+
+    public function test_super_admin_can_delete_restaurant_with_order_history(): void
+    {
+        $restaurant = Restaurant::factory()->create();
+        $product = Product::factory()->create(['restaurant_id' => $restaurant->id]);
+        $order = Order::factory()->create(['restaurant_id' => $restaurant->id]);
+        OrderItem::factory()->create(['order_id' => $order->id, 'product_id' => $product->id]);
+        Payment::factory()->create(['order_id' => $order->id]);
+
+        $this->actingAs($this->superAdmin)
+            ->deleteJson("/api/v1/superadmin/restaurants/{$restaurant->id}")
+            ->assertOk();
+
+        $this->assertDatabaseMissing('restaurants', ['id' => $restaurant->id]);
+        $this->assertDatabaseMissing('orders', ['id' => $order->id]);
+        $this->assertDatabaseMissing('products', ['id' => $product->id]);
+    }
+
+    public function test_non_numeric_restaurant_id_returns_not_found(): void
+    {
+        $this->actingAs($this->superAdmin)
+            ->putJson('/api/v1/superadmin/restaurants/abc', ['status' => 'active'])
+            ->assertNotFound();
+
+        $this->actingAs($this->superAdmin)
+            ->deleteJson('/api/v1/superadmin/restaurants/abc')
+            ->assertNotFound();
+    }
+
+    public function test_suspending_restaurant_revokes_staff_tokens(): void
+    {
+        $restaurant = Restaurant::factory()->create(['status' => 'active']);
+        $staff = User::factory()->create(['restaurant_id' => $restaurant->id]);
+        $staff->createToken('pos');
+
+        $this->actingAs($this->superAdmin)
+            ->putJson("/api/v1/superadmin/restaurants/{$restaurant->id}", ['status' => 'suspended'])
+            ->assertOk();
+
+        $this->assertCount(0, $staff->fresh()->tokens);
     }
 }

@@ -9,11 +9,12 @@ use App\Http\Requests\Order\StoreOrderRequest;
 use App\Http\Requests\Order\UpdateOrderStatusRequest;
 use App\Http\Resources\OrderResource;
 use App\Models\ActivityLog;
-use App\Models\Ingredient;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Product;
 use App\Models\RestaurantTable;
+use App\Services\KitchenFlowService;
+use App\Services\StockService;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -33,11 +34,20 @@ class OrderController extends Controller
         'canceled' => [],
     ];
 
+    public function __construct(
+        protected KitchenFlowService $kitchenFlow,
+        protected StockService $stockService,
+    ) {}
+
     public function index(Request $request): AnonymousResourceCollection
     {
         $this->authorize('viewAny', Order::class);
 
         $query = Order::with(['table', 'user', 'items.product', 'payment']);
+
+        if (! $request->user()->isSuperAdmin()) {
+            $query->where('restaurant_id', $request->user()->restaurant_id);
+        }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -51,18 +61,27 @@ class OrderController extends Controller
             $query->where('table_id', $request->table_id);
         }
 
-        $orders = $query->latest()->paginate($request->input('per_page', 15));
+        $orders = $query->latest()->paginate($this->perPage($request));
 
         return OrderResource::collection($orders);
     }
 
     public function store(StoreOrderRequest $request): JsonResponse
     {
+        if (! $request->user()->restaurant_id) {
+            return response()->json(['message' => 'Selecione um restaurante para criar o pedido.'], 422);
+        }
+
+        if ($request->table_id && ! RestaurantTable::where('restaurant_id', $request->user()->restaurant_id)->whereKey($request->table_id)->exists()) {
+            return response()->json(['message' => 'Mesa não pertence ao restaurante.'], 422);
+        }
+
         try {
             $order = DB::transaction(function () use ($request) {
                 $subtotal = 0.00;
 
                 $order = Order::create([
+                    'restaurant_id' => $request->user()->restaurant_id,
                     'table_id' => $request->table_id,
                     'user_id' => $request->user()->id,
                     'type' => $request->type,
@@ -74,22 +93,17 @@ class OrderController extends Controller
                 ]);
 
                 foreach ($request->items as $itemData) {
-                    $product = Product::with('ingredients')->findOrFail($itemData['product_id']);
+                    $product = Product::with('ingredients')
+                        ->where('restaurant_id', $request->user()->restaurant_id)
+                        ->findOrFail($itemData['product_id']);
 
                     if (! $product->available) {
                         throw new \InvalidArgumentException("O produto '{$product->name}' não está disponível no momento.");
                     }
 
-                    // verifica se há estoque suficiente antes de criar o pedido
-                    foreach ($product->ingredients as $ingredient) {
-                        $neededQty = $ingredient->pivot->qty_used * $itemData['quantity'];
-                        $currentStock = (float) $ingredient->stock_qty;
-                        if ($currentStock < $neededQty) {
-                            throw new \InvalidArgumentException("Estoque insuficiente do insumo '{$ingredient->name}'. Necessário: {$neededQty}{$ingredient->unit}, disponível: {$currentStock}{$ingredient->unit}.");
-                        }
-                    }
+                    $this->stockService->ensureAvailable([['product' => $product, 'quantity' => (int) $itemData['quantity']]]);
 
-                    $itemSubtotal = $product->price * $itemData['quantity'];
+                    $itemSubtotal = round((float) $product->price * $itemData['quantity'], 2);
                     $subtotal += $itemSubtotal;
 
                     OrderItem::create([
@@ -152,7 +166,9 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $product = Product::with('ingredients')->findOrFail($request->product_id);
+        $product = Product::with('ingredients')
+            ->where('restaurant_id', $order->restaurant_id)
+            ->findOrFail($request->product_id);
 
         if (! $product->available) {
             return response()->json([
@@ -160,18 +176,14 @@ class OrderController extends Controller
             ], 422);
         }
 
-        foreach ($product->ingredients as $ingredient) {
-            $neededQty = $ingredient->pivot->qty_used * $request->quantity;
-            $currentStock = (float) $ingredient->stock_qty;
-            if ($currentStock < $neededQty) {
-                return response()->json([
-                    'message' => "Estoque insuficiente do insumo '{$ingredient->name}'. Necessário: {$neededQty}{$ingredient->unit}, disponível: {$currentStock}{$ingredient->unit}.",
-                ], 422);
-            }
+        try {
+            $this->stockService->ensureAvailable([['product' => $product, 'quantity' => (int) $request->quantity]]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
         DB::transaction(function () use ($order, $product, $request) {
-            $itemSubtotal = $product->price * $request->quantity;
+            $itemSubtotal = round((float) $product->price * $request->quantity, 2);
 
             OrderItem::create([
                 'order_id' => $order->id,
@@ -189,6 +201,8 @@ class OrderController extends Controller
                 'subtotal' => $newSubtotal,
                 'total' => max($newTotal, 0.00),
             ]);
+
+            $this->kitchenFlow->syncOrderStatus($order);
         });
 
         return response()->json([
@@ -218,34 +232,11 @@ class OrderController extends Controller
 
         try {
             DB::transaction(function () use ($order, $newStatus, $currentStatus, $request) {
-                if ($currentStatus === 'pending' && $newStatus === 'confirmed') {
-                    $order->load(['items.product.ingredients']);
-
-                    foreach ($order->items as $item) {
-                        foreach ($item->product->ingredients as $ingredient) {
-                            $usedQty = $ingredient->pivot->qty_used * $item->quantity;
-                            $currentStock = (float) $ingredient->stock_qty;
-
-                            if ($currentStock < $usedQty) {
-                                throw new \InvalidArgumentException("Estoque insuficiente do insumo '{$ingredient->name}' para confirmar o pedido.");
-                            }
-
-                            $ingredient->decrement('stock_qty', $usedQty);
-
-                            ActivityLog::create([
-                                'user_id' => $request->user()->id,
-                                'subject_type' => Ingredient::class,
-                                'subject_id' => $ingredient->id,
-                                'action' => 'stock_deducted',
-                                'payload' => [
-                                    'order_id' => $order->id,
-                                    'deducted_qty' => $usedQty,
-                                    'remaining_stock' => (float) $ingredient->fresh()->stock_qty,
-                                ],
-                            ]);
-                        }
-                    }
+                if (in_array($newStatus, ['confirmed', 'preparing'], true)) {
+                    $this->stockService->deductForItems($order->items()->get(), $request->user()->id);
                 }
+
+                $this->kitchenFlow->promoteItemsTo($order, $newStatus);
 
                 $order->update(['status' => $newStatus]);
 

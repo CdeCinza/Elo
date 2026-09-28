@@ -113,6 +113,69 @@ class StripePaymentTest extends TestCase
         });
     }
 
+    public function test_create_intent_by_table_number_only_charges_the_requesting_restaurant(): void
+    {
+        $otherRestaurant = Restaurant::create([
+            'name' => 'Outro Restaurante',
+            'slug' => 'outro-restaurante',
+            'status' => 'active',
+        ]);
+        $otherTable = RestaurantTable::create([
+            'restaurant_id' => $otherRestaurant->id,
+            'number' => 'Mesa 1',
+            'capacity' => 4,
+            'status' => 'occupied',
+        ]);
+        $otherOrder = Order::create([
+            'restaurant_id' => $otherRestaurant->id,
+            'table_id' => $otherTable->id,
+            'status' => 'pending',
+            'subtotal' => 30.00,
+            'total' => 30.00,
+        ]);
+        OrderItem::create([
+            'order_id' => $otherOrder->id,
+            'product_id' => $this->product->id,
+            'quantity' => 1,
+            'unit_price' => 30.00,
+            'subtotal' => 30.00,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/payment_intents' => Http::response([
+                'id' => 'pi_test_other_restaurant',
+                'client_secret' => 'pi_test_other_restaurant_secret',
+            ], 200),
+        ]);
+
+        $this->postJson('/api/v1/payments/stripe/create-intent', ['table_number' => '01'], [
+            'X-Restaurant-Id' => (string) $otherRestaurant->id,
+        ])->assertOk()
+            ->assertJsonPath('order_id', $otherOrder->id);
+
+        $this->postJson('/api/v1/payments/stripe/create-intent', ['order_id' => $this->order->id], [
+            'X-Restaurant-Id' => (string) $otherRestaurant->id,
+        ])->assertUnprocessable();
+    }
+
+    public function test_create_intent_rejects_canceled_orders(): void
+    {
+        $this->order->update(['status' => 'canceled']);
+
+        $this->postJson('/api/v1/payments/stripe/create-intent', ['order_id' => $this->order->id])
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'Este pedido foi cancelado e não pode ser cobrado.');
+    }
+
+    public function test_create_intent_does_not_leak_internal_errors(): void
+    {
+        Config::set('services.stripe.secret', '');
+
+        $this->postJson('/api/v1/payments/stripe/create-intent', ['table_number' => '01'])
+            ->assertStatus(500)
+            ->assertJsonPath('message', 'Não foi possível inicializar o pagamento no Stripe. Tente novamente em instantes.');
+    }
+
     public function test_creates_payment_intent_calculates_server_amount_with_service_fee(): void
     {
         Http::fake([
@@ -205,6 +268,34 @@ class StripePaymentTest extends TestCase
 
         // Garante que só existe 1 registro no banco de dados
         $this->assertEquals(1, Payment::where('transaction_id', 'pi_test_idempotent')->count());
+    }
+
+    public function test_confirm_payment_cannot_apply_an_intent_to_another_order(): void
+    {
+        $otherOrder = Order::create([
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'status' => 'pending',
+            'subtotal' => 100.00,
+            'total' => 100.00,
+        ]);
+
+        Http::fake([
+            'https://api.stripe.com/v1/payment_intents/pi_test_other_order' => Http::response([
+                'id' => 'pi_test_other_order',
+                'status' => 'succeeded',
+                'amount_received' => 10000,
+                'metadata' => ['order_id' => (string) $this->order->id],
+            ], 200),
+        ]);
+
+        $this->postJson('/api/v1/payments/stripe/confirm', [
+            'payment_intent_id' => 'pi_test_other_order',
+            'order_id' => $otherOrder->id,
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseMissing('payments', ['transaction_id' => 'pi_test_other_order']);
+        $this->assertSame('pending', $otherOrder->fresh()->status);
     }
 
     public function test_cannot_confirm_payment_if_intent_is_not_succeeded(): void

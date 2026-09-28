@@ -25,6 +25,10 @@ class TableController extends Controller
 
         $query = RestaurantTable::with(['activeOrder.items.product', 'activeOrder.user']);
 
+        if (! $request->user()->isSuperAdmin()) {
+            $query->where('restaurant_id', $request->user()->restaurant_id);
+        }
+
         // filtra por status se informado (free, occupied, reserved)
         if ($request->filled('status')) {
             $query->where('status', $request->status);
@@ -37,7 +41,14 @@ class TableController extends Controller
 
     public function store(StoreTableRequest $request): JsonResponse
     {
-        $table = RestaurantTable::create($request->validated());
+        if (! $request->user()->restaurant_id) {
+            return response()->json(['message' => 'Selecione um restaurante para cadastrar a mesa.'], 422);
+        }
+
+        $table = RestaurantTable::create([
+            ...$request->validated(),
+            'restaurant_id' => $request->user()->restaurant_id,
+        ]);
 
         return response()->json([
             'message' => 'Mesa cadastrada com sucesso.',
@@ -68,6 +79,12 @@ class TableController extends Controller
     {
         $this->authorize('delete', $table);
 
+        if ($table->activeOrder()->exists()) {
+            return response()->json([
+                'message' => 'Esta mesa possui um pedido ativo em aberto.',
+            ], 422);
+        }
+
         $table->delete();
 
         return response()->json([
@@ -84,6 +101,7 @@ class TableController extends Controller
         }
 
         $order = Order::create([
+            'restaurant_id' => $table->restaurant_id,
             'table_id' => $table->id,
             'user_id' => $request->user()->id,
             'type' => 'dine_in',

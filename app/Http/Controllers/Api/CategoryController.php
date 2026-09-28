@@ -7,6 +7,8 @@ use App\Http\Requests\Category\StoreCategoryRequest;
 use App\Http\Requests\Category\UpdateCategoryRequest;
 use App\Http\Resources\CategoryResource;
 use App\Models\Category;
+use App\Models\OrderItem;
+use App\Models\Restaurant;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,6 +22,10 @@ class CategoryController extends Controller
     {
         $query = Category::query();
 
+        if ($request->header('X-Restaurant-Id')) {
+            $query->where('restaurant_id', (int) $request->header('X-Restaurant-Id'));
+        }
+
         if ($request->has('active')) {
             $query->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN));
         }
@@ -31,7 +37,18 @@ class CategoryController extends Controller
 
     public function store(StoreCategoryRequest $request): JsonResponse
     {
-        $category = Category::create($request->validated());
+        $restaurantId = $request->user()->isSuperAdmin()
+            ? (int) $request->header('X-Restaurant-Id')
+            : $request->user()->restaurant_id;
+
+        if (! $restaurantId || ! Restaurant::whereKey($restaurantId)->exists()) {
+            return response()->json(['message' => 'Selecione um restaurante válido.'], 422);
+        }
+
+        $category = Category::create([
+            ...$request->validated(),
+            'restaurant_id' => $restaurantId,
+        ]);
 
         return response()->json([
             'message' => 'Categoria criada com sucesso.',
@@ -59,6 +76,12 @@ class CategoryController extends Controller
     public function destroy(Category $category): JsonResponse
     {
         $this->authorize('delete', $category);
+
+        if (OrderItem::whereIn('product_id', $category->products()->select('id'))->exists()) {
+            return response()->json([
+                'message' => 'Esta categoria possui produtos com pedidos registrados. Desative-a em vez de excluir.',
+            ], 422);
+        }
 
         $category->delete();
 
