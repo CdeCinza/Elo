@@ -70,13 +70,16 @@ export function useCustomerSession(tableId: string | number) {
   const fetchSessionData = useCallback(async (isSilent = false) => {
     try {
       const [catRes, prodRes, tableRes] = await Promise.all([
-        api.get('/categories'),
+        api.get('/categories', { params: { active: 1 } }),
         api.get('/products', { params: { per_page: 200 } }),
         api.get(`/customer/table/${tableId}`),
       ]);
 
-      setCategories(catRes.data.data || []);
-      setProducts(prodRes.data.data || []);
+      const activeCategories: Category[] = catRes.data.data || [];
+      const activeCategoryIds = new Set(activeCategories.map((category) => category.id));
+      setCategories(activeCategories);
+      // Pratos de categorias ocultas pelo gerente também saem do tablet
+      setProducts((prodRes.data.data || []).filter((product: Product) => activeCategoryIds.has(product.category_id)));
       setTable(tableRes.data.table || null);
       setError(null);
     } catch (err) {

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Smartphone, Store, ChefHat, ArrowUpRight } from 'lucide-react';
+import { Smartphone, Store, ChefHat, ArrowUpRight, BookOpen } from 'lucide-react';
 import { api } from '@/lib/api';
 
 export default function RootHomePage() {
@@ -153,6 +153,28 @@ export default function RootHomePage() {
             </Link>
           </div>
         </div>
+
+        {/* Faixa: Gestão do cardápio */}
+        <Link
+          href="/menu"
+          className="group mt-6 bg-white rounded-2xl border border-[#EAE6E1] p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[#191817]/40 transition-colors"
+        >
+          <div className="flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1] flex items-center justify-center shrink-0">
+              <BookOpen className="w-5 h-5 text-[#191817]" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-[#191817]">Cardápio & estoque</h2>
+              <p className="text-xs text-[#6E6760] leading-relaxed">
+                Pratos, preços, fotos, categorias e ficha técnica com baixa automática de ingredientes.
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-medium text-[#191817] flex items-center gap-1 shrink-0">
+            Gerenciar cardápio
+            <ArrowUpRight className="w-4 h-4 text-[#6E6760] group-hover:text-[#191817] transition-colors" />
+          </span>
+        </Link>
       </div>
 
       {/* Footer sóbrio */}

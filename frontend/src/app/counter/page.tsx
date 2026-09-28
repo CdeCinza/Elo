@@ -29,6 +29,7 @@ import {
   ShieldCheck,
   Store,
   LogOut,
+  BookOpen,
 } from 'lucide-react';
 import { StripePaymentModal, isStripeConfigured } from '@/components/payment/StripePaymentModal';
 
@@ -497,6 +498,16 @@ export default function PosCounterPage() {
           >
             <ChefHat className="w-3.5 h-3.5 text-[#C84E1F]" />
             <span>KDS Cozinha</span>
+          </Link>
+          )}
+
+          {canManageTables && (
+          <Link
+            href="/menu"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-[#C84E1F]" />
+            <span>Cardápio</span>
           </Link>
           )}
 
@@ -1512,6 +1523,16 @@ export default function PosCounterPage() {
                     </option>
                   ))}
                 </select>
+                {products.length === 0 && (
+                  <p className="text-[11px] text-[#78716A] mt-1.5">
+                    Nenhum prato à venda.{' '}
+                    {canManageTables ? (
+                      <Link href="/menu" className="text-[#C84E1F] font-semibold hover:underline">Cadastrar no cardápio</Link>
+                    ) : (
+                      'Peça à gerência para cadastrar o cardápio.'
+                    )}
+                  </p>
+                )}
               </div>
 
               <div className="flex gap-3">

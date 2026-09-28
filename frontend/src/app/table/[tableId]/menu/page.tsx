@@ -186,7 +186,7 @@ export default function MenuPage() {
 
           {!loading && filteredProducts.length === 0 && (
             <div className="text-center py-12 text-[#6E6760] text-xs">
-              {error || 'Nenhum prato disponível com esses termos.'}
+              {error || (availableProducts.length === 0 ? 'O cardápio está sendo preparado. Chame o garçom para fazer seu pedido.' : 'Nenhum prato disponível com esses termos.')}
             </div>
           )}
 
