@@ -39,6 +39,22 @@ class IngredientApiTest extends TestCase
             ->assertJsonValidationErrors('name');
     }
 
+    public function test_super_admin_listing_is_scoped_to_the_selected_restaurant(): void
+    {
+        $superAdminRole = Role::create(['name' => 'super_admin', 'label' => 'Super Admin']);
+        $superAdmin = User::factory()->create(['role_id' => $superAdminRole->id, 'restaurant_id' => null]);
+        $selectedRestaurant = Restaurant::factory()->create();
+        Ingredient::factory()->create(['restaurant_id' => $selectedRestaurant->id, 'name' => 'Farinha']);
+        Ingredient::factory()->create(['restaurant_id' => $this->manager->restaurant_id, 'name' => 'Açúcar']);
+
+        $this->actingAs($superAdmin, 'sanctum')
+            ->withHeader('X-Restaurant-Id', (string) $selectedRestaurant->id)
+            ->getJson('/api/v1/ingredients')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Farinha');
+    }
+
     public function test_out_of_range_stock_is_a_validation_error(): void
     {
         $this->actingAs($this->manager, 'sanctum')

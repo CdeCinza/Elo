@@ -25,6 +25,8 @@ class IngredientController extends Controller
 
         if (! $request->user()->isSuperAdmin()) {
             $query->where('restaurant_id', $request->user()->restaurant_id);
+        } elseif ($request->header('X-Restaurant-Id')) {
+            $query->where('restaurant_id', (int) $request->header('X-Restaurant-Id'));
         }
 
         if ($request->filled('search')) {
