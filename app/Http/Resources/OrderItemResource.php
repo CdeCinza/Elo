@@ -16,7 +16,9 @@ class OrderItemResource extends JsonResource
             'unit_price' => (float) $this->unit_price,
             'quantity' => (int) $this->quantity,
             'subtotal' => (float) $this->subtotal,
+            'status' => $this->status,
             'notes' => $this->notes,
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 }

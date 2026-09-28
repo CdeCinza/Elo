@@ -16,12 +16,22 @@ class OrderItem extends Model
         'unit_price',
         'quantity',
         'subtotal',
+        'status',
+        'stock_deducted_at',
         'notes',
+    ];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'status' => 'pending',
     ];
 
     protected $casts = [
         'unit_price' => 'decimal:2',
         'subtotal' => 'decimal:2',
+        'stock_deducted_at' => 'datetime',
     ];
 
     public function order(): BelongsTo
