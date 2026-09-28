@@ -2,68 +2,57 @@
 
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Tablet, ShieldCheck, Check, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { Tablet, ShieldCheck, Check, AlertCircle, RefreshCw } from 'lucide-react';
 import { api } from '@/lib/api';
 import { toast } from '@/components/ui/ToastProvider';
+import { getLinkedTable, linkTabletToTable, normalizeTableNumber, tableExists, verifyManagerCredentials } from '@/lib/tablet';
 
 export default function TabletSetupPage() {
   const router = useRouter();
   const [checkingStorage, setCheckingStorage] = useState(true);
   const [selectedTable, setSelectedTable] = useState('');
-  const [pin, setPin] = useState('');
+  const [managerEmail, setManagerEmail] = useState('');
+  const [managerPassword, setManagerPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [availableTables, setAvailableTables] = useState<Array<{ id: number; number: string; status: string }>>([]);
-  const [loadingTables, setLoadingTables] = useState(false);
+  const [loadingTables, setLoadingTables] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [customTableNumber, setCustomTableNumber] = useState('');
   const [isCustom, setIsCustom] = useState(false);
 
   useEffect(() => {
-    // 1. Verifica se o tablet já possui uma mesa configurada no navegador
-    if (typeof window !== 'undefined') {
-      const savedTable = localStorage.getItem('elo_tablet_table');
-      if (savedTable) {
-        router.replace(`/table/${savedTable}`);
-        return;
-      }
-    }
-    setCheckingStorage(false);
-    fetchTables();
-  }, [router]);
-
-  const fetchTables = async () => {
-    setLoadingTables(true);
-    try {
-      const res = await api.get('/pos/tables');
-      if (res.data?.tables) {
-        setAvailableTables(res.data.tables);
-        if (res.data.tables.length > 0) {
-          setSelectedTable(res.data.tables[0].number);
-        }
-      }
-    } catch {
-      // Fallback para mesas 01 a 12 caso a API falhe temporariamente
-      const fallbacks = Array.from({ length: 12 }, (_, i) => ({
-        id: i + 1,
-        number: String(i + 1).padStart(2, '0'),
-        status: 'free',
-      }));
-      setAvailableTables(fallbacks);
-      setSelectedTable('01');
-    } finally {
-      setLoadingTables(false);
-    }
-  };
-
-  const handleSaveTabletConfig = (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg('');
-
-    // Validação de PIN de segurança do Gerente (padrão 1234 ou senha mestre)
-    const validPins = ['1234', '0000', 'admin', '8888'];
-    if (!validPins.includes(pin.trim())) {
-      setErrorMsg('PIN incorreto. Use o PIN padrão (1234) ou contate o gerente.');
+    const savedTable = getLinkedTable();
+    if (savedTable) {
+      router.replace(`/table/${savedTable}`);
       return;
     }
+
+    let active = true;
+    api.get('/customer/tables')
+      .then((res) => {
+        if (active && res.data?.tables) {
+          setAvailableTables(res.data.tables);
+          if (res.data.tables.length > 0) {
+            setSelectedTable(res.data.tables[0].number);
+          }
+        }
+      })
+      .catch(() => {
+        if (active) setErrorMsg('Não foi possível carregar as mesas. Tente novamente mais tarde.');
+      })
+      .finally(() => {
+        if (active) {
+          setLoadingTables(false);
+          setCheckingStorage(false);
+        }
+      });
+
+    return () => { active = false; };
+  }, [router]);
+
+  const handleSaveTabletConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMsg('');
 
     const tableNumberToSave = isCustom ? customTableNumber.trim() : selectedTable;
 
@@ -72,16 +61,26 @@ export default function TabletSetupPage() {
       return;
     }
 
-    // Normaliza para formato limpo (ex: "01", "02")
-    const cleanNumber = tableNumberToSave.replace(/[^0-9]/g, '');
-    const finalNumber = cleanNumber !== '' ? String(parseInt(cleanNumber, 10)).padStart(2, '0') : tableNumberToSave;
+    setSubmitting(true);
+    try {
+      const verification = await verifyManagerCredentials(managerEmail, managerPassword);
+      if (!verification.success) {
+        setErrorMsg(verification.message);
+        return;
+      }
 
-    // Salva permanentemente no localStorage do tablet
-    localStorage.setItem('elo_tablet_table', finalNumber);
-    localStorage.setItem('elo_tablet_configured_at', new Date().toISOString());
+      const finalNumber = normalizeTableNumber(tableNumberToSave);
+      if (!(await tableExists(finalNumber))) {
+        setErrorMsg('Esta mesa não existe no restaurante. Escolha uma mesa cadastrada.');
+        return;
+      }
 
-    toast.success(`Tablet vinculado à Mesa ${finalNumber} com sucesso!`, 'Dispositivo Configurado');
-    router.replace(`/table/${finalNumber}`);
+      linkTabletToTable(finalNumber);
+      toast.success('Dispositivo Configurado', `Tablet vinculado à Mesa ${finalNumber} com sucesso!`);
+      router.replace(`/table/${finalNumber}`);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   if (checkingStorage) {
@@ -156,6 +155,11 @@ export default function TabletSetupPage() {
               {!isCustom ? (
                 <div>
                   <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1 border border-[#EAE6E1] rounded-2xl bg-[#F9F8F6]">
+                    {!loadingTables && availableTables.length === 0 && (
+                      <p className="col-span-4 py-4 text-center text-xs text-[#6E6760]">
+                        Nenhuma mesa disponível para seleção.
+                      </p>
+                    )}
                     {availableTables.map((t) => {
                       const isSelected = selectedTable === t.number;
                       return (
@@ -184,6 +188,7 @@ export default function TabletSetupPage() {
               ) : (
                 <input
                   type="text"
+                  aria-label="Número da mesa"
                   placeholder="Ex: 01, 15, Varanda 2..."
                   value={customTableNumber}
                   onChange={(e) => setCustomTableNumber(e.target.value)}
@@ -193,33 +198,44 @@ export default function TabletSetupPage() {
               )}
             </div>
 
-            {/* PIN de Segurança do Gerente */}
-            <div className="space-y-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-[#191817] flex items-center justify-between">
-                <span>PIN do Gerente</span>
-                <span className="text-[11px] font-normal text-[#6E6760] lowercase">(padrão: 1234)</span>
-              </label>
+            {/* Autorização da Gerência */}
+            <fieldset className="space-y-2">
+              <legend className="text-xs font-bold uppercase tracking-wider text-[#191817] mb-2">
+                Autorização da gerência
+              </legend>
+              <input
+                type="email"
+                autoComplete="off"
+                aria-label="E-mail do gerente"
+                placeholder="E-mail do gerente"
+                value={managerEmail}
+                onChange={(e) => setManagerEmail(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-[#EAE6E1] bg-[#F9F8F6] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F]"
+                required
+              />
               <input
                 type="password"
-                maxLength={8}
-                placeholder="••••"
-                value={pin}
-                onChange={(e) => setPin(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-[#EAE6E1] bg-[#F9F8F6] text-center text-xl tracking-[0.4em] font-mono text-[#191817] focus:outline-none focus:border-[#C84E1F]"
+                autoComplete="off"
+                aria-label="Senha do gerente"
+                placeholder="Senha"
+                value={managerPassword}
+                onChange={(e) => setManagerPassword(e.target.value)}
+                className="w-full px-4 py-3 rounded-xl border border-[#EAE6E1] bg-[#F9F8F6] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F]"
                 required
               />
               <p className="text-[11px] text-[#6E6760]">
-                Necessário para evitar que clientes alterem a numeração da mesa.
+                Necessário para evitar que clientes alterem a numeração da mesa. A sessão não fica salva no tablet.
               </p>
-            </div>
+            </fieldset>
 
             {/* Botão de Salvar e Iniciar Operação */}
             <button
               type="submit"
-              className="w-full py-4 rounded-2xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm shadow-lg shadow-[#C84E1F]/20 hover:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer"
+              disabled={submitting}
+              className="w-full py-4 rounded-2xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm shadow-lg shadow-[#C84E1F]/20 hover:shadow-none transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60 disabled:cursor-wait"
             >
               <Check className="w-4 h-4" />
-              <span>Fixar neste Tablet e Iniciar</span>
+              <span>{submitting ? 'Validando...' : 'Fixar neste Tablet e Iniciar'}</span>
             </button>
           </form>
         </div>
