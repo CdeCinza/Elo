@@ -2,7 +2,7 @@
 
 > **Data:** 28/09/2026
 > **Escopo:** backend Laravel (API), frontend Next.js (tablet, cardápio, comanda, caixa, cozinha, super admin) e banco MySQL local
-> **Resultado:** 98 testes de backend passando (eram 65), 490 asserções. Build e lint do frontend sem erros. Nenhuma tela com rolagem lateral em 375px.
+> **Resultado:** 99 testes de backend passando (eram 65), 493 asserções. Build e lint do frontend sem erros. Nenhuma tela com rolagem lateral em 375px.
 
 Este documento tem três partes:
 
@@ -96,16 +96,46 @@ Credenciais de teste (seed): `dono@`, `gerente@`, `garcom@`, `chef@` e `caixa@el
 - Correções de acessibilidade: `aria-label`, `htmlFor`, `role="dialog"`.
 - Removidos: componentes mortos, dados mockados, `console.log` e imports sem uso.
 
+### 2.3 Gestão do cardápio (`/menu`), a tela que faltava
+
+Antes não havia tela para o dono cadastrar o cardápio: a API existia, mas um restaurante criado no Super Admin ficava com o tablet vazio. Agora:
+
+- **Acesso:** pelo botão "Cardápio" no cabeçalho do caixa, pelo card "Cardápio & estoque" na página inicial, ou direto em `/menu`. Só dono, admin do restaurante, gerente e super admin editam. Os outros papéis veem "Seu perfil não edita o cardápio". Um super admin sem restaurante selecionado é levado ao painel para escolher um.
+- **Primeiros passos:** com o cardápio vazio, a tela mostra um guia de 3 passos (categorias → estoque opcional → pratos). Tentar criar um prato sem categoria abre direto o formulário de categoria.
+- **Pratos:**
+  - busca e filtro por categoria;
+  - foto com prévia e aviso se o link não carregar;
+  - preço aceita `34,90` e `1.234,50`;
+  - descrição;
+  - **ficha técnica** (ingrediente + quantidade) usada na baixa automática de estoque;
+  - botão "À venda / Pausado" que tira o prato do tablet na hora.
+- **Categorias:** criar, editar, excluir e alternar entre **visível e oculta**. Uma categoria oculta e os pratos dela saem do tablet.
+- **Estoque:** ingredientes com quantidade, unidade e nível de alerta. Há um selo de "Estoque baixo" e um contador na aba.
+- **Proteções:**
+  - trava contra clique duplo em salvar, excluir e alternar (o clique duplo criava o prato duas vezes, reproduzido no teste);
+  - confirmação antes de excluir, explicando o efeito em cascata;
+  - erros de validação da API aparecem no campo certo, em português;
+  - Esc e clique fora fecham os formulários;
+  - layout verificado em 375px.
+- **Integrações:**
+  - o tablet agora esconde categorias ocultas e os pratos delas;
+  - o cardápio vazio do tablet mostra "O cardápio está sendo preparado";
+  - o "Lançar item" do caixa aponta para o cadastro quando não há pratos.
+- **Backend:** para o super admin, `GET /ingredients` passou a respeitar o restaurante selecionado (antes listava os ingredientes de todos). → `IngredientApiTest::test_super_admin_listing_is_scoped_to_the_selected_restaurant`.
+- **Arquivos:**
+  - `frontend/src/app/menu/page.tsx`
+  - `frontend/src/components/catalog/*` (formulários e modal base)
+  - `frontend/src/lib/catalog.ts` (tipos, carga do catálogo, conversão de decimais, erros de validação)
+
 ---
 
 ## 3. Pendências (decisões de produto)
 
-1. **Não existe tela para o dono cadastrar o cardápio** (categorias, produtos, ingredientes). A API existe, mas um restaurante novo fica com o tablet vazio. É a lacuna mais visível para uma demo.
-2. **Dados antigos com 3h de diferença.** Para uma demo limpa: `C:\Php8.5.1\php.exe artisan migrate:fresh --seed`. Isso **apaga todo o banco `elo`**, e a senha do Super Admin vai por e-mail (Brevo vencido).
-3. Cancelar um pedido ou forçar a liberação da mesa **não devolve o estoque** já baixado.
-4. `GET /products` e `/categories` sem o header `X-Restaurant-Id` retornam dados de todos os restaurantes (é cardápio público, mas vaza entre inquilinos).
-5. Um webhook atrasado do Stripe pode liberar uma mesa que já foi reaberta.
-6. O garçom não consegue adicionar itens, via `/orders/{id}/items`, em pedidos feitos pelo cliente (`OrderPolicy`).
+1. **Dados antigos com 3h de diferença.** Para uma demo limpa: `C:\Php8.5.1\php.exe artisan migrate:fresh --seed`. Isso **apaga todo o banco `elo`**, e a senha do Super Admin vai por e-mail (Brevo vencido).
+2. Cancelar um pedido ou forçar a liberação da mesa **não devolve o estoque** já baixado.
+3. `GET /products` e `/categories` sem o header `X-Restaurant-Id` retornam dados de todos os restaurantes (é cardápio público, mas vaza entre inquilinos).
+4. Um webhook atrasado do Stripe pode liberar uma mesa que já foi reaberta.
+5. O garçom não consegue adicionar itens, via `/orders/{id}/items`, em pedidos feitos pelo cliente (`OrderPolicy`).
 
 ---
 
@@ -207,5 +237,6 @@ Os achados de uma frente viram tarefas para outra (ex.: a revisão do front enco
 - PHP: chaves sempre, tipos de retorno explícitos, PHPDoc em vez de comentário inline, mensagens para o usuário em português, `pint` depois de editar.
 - Testes: PHPUnit feature tests com factories. Rode o teste mais estreito e depois a suíte completa.
 - Frontend: siga o padrão dos arquivos vizinhos. Para dinheiro, use `formatBRL`. Para modais, `useEscapeKey`. Para erros de API, `getApiErrorMessage`. O toast avulso é `toast.x(título, mensagem)`.
+- Botões de envio: `disabled={saving}` **não basta** contra clique duplo, porque o estado só muda no próximo render. Use uma trava síncrona (`useRef` no handler, ou uma variável de módulo quando a função é criada no render, como o `withActionLock` do caixa). Esse bug apareceu três vezes neste projeto (tablet, caixa, cadastro do cardápio).
 - O Next.js desta versão tem mudanças incompatíveis. Consulte `frontend/node_modules/next/dist/docs/` antes de usar uma API nova (ver `frontend/AGENTS.md`).
 - Nunca mude dependências nem crie pastas base sem aprovação. Nunca rode comandos destrutivos no banco `elo`.
