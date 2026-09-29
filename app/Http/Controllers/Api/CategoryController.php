@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesRestaurantContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Category\StoreCategoryRequest;
 use App\Http\Requests\Category\UpdateCategoryRequest;
@@ -17,14 +18,13 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 class CategoryController extends Controller
 {
     use AuthorizesRequests;
+    use ResolvesRestaurantContext;
 
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Category::query();
 
-        if ($request->header('X-Restaurant-Id')) {
-            $query->where('restaurant_id', (int) $request->header('X-Restaurant-Id'));
-        }
+        $query->where('restaurant_id', $this->resolveRestaurantId($request));
 
         if ($request->has('active')) {
             $query->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN));
@@ -56,8 +56,10 @@ class CategoryController extends Controller
         ], 201);
     }
 
-    public function show(Category $category): JsonResponse
+    public function show(Request $request, Category $category): JsonResponse
     {
+        abort_unless($category->restaurant_id === $this->resolveRestaurantId($request), 404);
+
         return response()->json([
             'category' => new CategoryResource($category->load('products')),
         ]);

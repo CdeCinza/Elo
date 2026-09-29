@@ -56,6 +56,23 @@ class OrderPolicy
         return false;
     }
 
+    public function addItem(User $user, Order $order): bool
+    {
+        if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $order->restaurant_id)) {
+            return false;
+        }
+
+        if (in_array($order->status, ['delivered', 'canceled'], true)) {
+            return false;
+        }
+
+        if (in_array($user->role?->name, ['owner', 'restaurant_admin', 'manager', 'super_admin'], true)) {
+            return true;
+        }
+
+        return $user->role?->name === 'waiter' && ($order->user_id === $user->id || $order->table_id !== null);
+    }
+
     public function delete(User $user, Order $order): bool
     {
         if (! $user->isSuperAdmin() && ($user->restaurant_id === null || $user->restaurant_id !== $order->restaurant_id)) {

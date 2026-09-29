@@ -8,7 +8,7 @@ class AddItemToOrderRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->can('update', $this->route('order')) ?? false;
+        return $this->user()?->can('addItem', $this->route('order')) ?? false;
     }
 
     public function rules(): array

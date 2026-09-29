@@ -86,6 +86,28 @@ class OrderApiTest extends TestCase
             ->assertJsonPath('order.total', 30);
     }
 
+    public function test_waiter_can_add_an_item_to_a_customer_created_table_order(): void
+    {
+        $order = Order::factory()->create([
+            'restaurant_id' => $this->waiter->restaurant_id,
+            'table_id' => $this->table->id,
+            'user_id' => null,
+            'status' => 'pending',
+            'subtotal' => 0.00,
+            'total' => 0.00,
+        ]);
+
+        $this->actingAs($this->waiter, 'sanctum')
+            ->postJson("/api/v1/orders/{$order->id}/items", [
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+            ])
+            ->assertOk()
+            ->assertJsonPath('order.total', 30);
+
+        $this->assertDatabaseHas('order_items', ['order_id' => $order->id, 'product_id' => $this->product->id]);
+    }
+
     public function test_state_machine_validates_transitions(): void
     {
         $order = Order::factory()->create([

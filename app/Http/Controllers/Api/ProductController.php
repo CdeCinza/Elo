@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Concerns\ResolvesRestaurantContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Product\StoreProductRequest;
 use App\Http\Requests\Product\UpdateProductRequest;
@@ -18,14 +19,13 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 class ProductController extends Controller
 {
     use AuthorizesRequests;
+    use ResolvesRestaurantContext;
 
     public function index(Request $request): AnonymousResourceCollection
     {
         $query = Product::with(['category', 'ingredients']);
 
-        if ($request->header('X-Restaurant-Id')) {
-            $query->where('restaurant_id', (int) $request->header('X-Restaurant-Id'));
-        }
+        $query->where('restaurant_id', $this->resolveRestaurantId($request));
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -84,8 +84,10 @@ class ProductController extends Controller
         ], 201);
     }
 
-    public function show(Product $product): JsonResponse
+    public function show(Request $request, Product $product): JsonResponse
     {
+        abort_unless($product->restaurant_id === $this->resolveRestaurantId($request), 404);
+
         return response()->json([
             'product' => new ProductResource($product->load(['category', 'ingredients'])),
         ]);

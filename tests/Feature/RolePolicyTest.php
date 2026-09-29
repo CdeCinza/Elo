@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Order;
 use App\Models\Restaurant;
+use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -72,5 +73,24 @@ class RolePolicyTest extends TestCase
 
         $this->assertTrue($chef->can('update', $preparingOrder));
         $this->assertFalse($chef->can('update', $deliveredOrder));
+    }
+
+    public function test_waiter_can_add_items_to_a_customers_table_order_without_changing_its_status(): void
+    {
+        $waiter = User::factory()->create(['role_id' => $this->waiterRole->id, 'restaurant_id' => $this->restaurant->id]);
+        $order = Order::factory()->create([
+            'restaurant_id' => $this->restaurant->id,
+            'user_id' => null,
+            'table_id' => RestaurantTable::factory()->create(['restaurant_id' => $this->restaurant->id])->id,
+            'status' => 'pending',
+        ]);
+
+        $this->assertTrue($waiter->can('addItem', $order));
+        $this->assertFalse($waiter->can('update', $order));
+
+        $otherRestaurant = Restaurant::factory()->create();
+        $otherTable = RestaurantTable::factory()->create(['restaurant_id' => $otherRestaurant->id]);
+        $otherOrder = Order::factory()->create(['restaurant_id' => $otherRestaurant->id, 'table_id' => $otherTable->id]);
+        $this->assertFalse($waiter->can('addItem', $otherOrder));
     }
 }

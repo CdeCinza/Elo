@@ -52,6 +52,32 @@ class ProductApiTest extends TestCase
             ->assertJsonPath('data.0.name', 'Hambúrguer Gourmet');
     }
 
+    public function test_public_products_are_scoped_to_one_restaurant(): void
+    {
+        $firstProduct = Product::factory()->create([
+            'restaurant_id' => $this->manager->restaurant_id,
+            'category_id' => $this->category->id,
+        ]);
+        $otherRestaurant = Restaurant::factory()->create();
+        $otherCategory = Category::factory()->create(['restaurant_id' => $otherRestaurant->id]);
+        $otherProduct = Product::factory()->create([
+            'restaurant_id' => $otherRestaurant->id,
+            'category_id' => $otherCategory->id,
+        ]);
+
+        $this->getJson('/api/v1/products')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $firstProduct->id);
+
+        $this->getJson('/api/v1/products', ['X-Restaurant-Id' => (string) $otherRestaurant->id])
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $otherProduct->id);
+
+        $this->getJson("/api/v1/products/{$otherProduct->id}")->assertNotFound();
+    }
+
     public function test_manager_can_create_product_with_recipe_ingredients(): void
     {
         $ingredient = Ingredient::factory()->create(['name' => 'Carne 180g']);

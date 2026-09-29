@@ -378,4 +378,41 @@ class StripePaymentTest extends TestCase
 
         $this->assertEquals('free', $this->table->fresh()->status);
     }
+
+    public function test_late_webhook_does_not_release_a_table_with_a_new_order(): void
+    {
+        $newOrder = Order::create([
+            'restaurant_id' => $this->restaurant->id,
+            'table_id' => $this->table->id,
+            'status' => 'pending',
+            'subtotal' => 50.00,
+            'total' => 50.00,
+        ]);
+
+        $timestamp = time();
+        $payload = json_encode([
+            'type' => 'payment_intent.succeeded',
+            'data' => [
+                'object' => [
+                    'id' => 'pi_test_late_webhook',
+                    'amount_received' => 10000,
+                    'metadata' => ['order_id' => (string) $this->order->id],
+                ],
+            ],
+        ]);
+        $signature = hash_hmac('sha256', "{$timestamp}.{$payload}", 'whsec_test_secret');
+
+        $this->call('POST', '/api/v1/payments/stripe/webhook', [], [], [], [
+            'HTTP_STRIPE_SIGNATURE' => "t={$timestamp},v1={$signature}",
+            'CONTENT_TYPE' => 'application/json',
+        ], $payload)->assertOk();
+
+        $this->assertDatabaseHas('payments', [
+            'transaction_id' => 'pi_test_late_webhook',
+            'order_id' => $this->order->id,
+            'status' => 'paid',
+        ]);
+        $this->assertSame('occupied', $this->table->fresh()->status);
+        $this->assertSame('pending', $newOrder->fresh()->status);
+    }
 }

@@ -25,7 +25,7 @@ trait ResolvesRestaurantContext
         } elseif ($request->query('restaurant_id')) {
             $restaurantId = (int) $request->query('restaurant_id');
         } else {
-            $restaurantId = (int) (Restaurant::query()->value('id') ?? Restaurant::create([
+            $restaurantId = (int) (Restaurant::query()->orderBy('id')->value('id') ?? Restaurant::create([
                 'name' => 'Restaurante Principal',
                 'slug' => 'restaurante-principal',
                 'status' => 'active',

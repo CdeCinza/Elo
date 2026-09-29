@@ -41,6 +41,25 @@ class CategoryApiTest extends TestCase
             ->assertJsonCount(3, 'data');
     }
 
+    public function test_public_categories_are_scoped_to_one_restaurant(): void
+    {
+        $firstCategory = Category::factory()->create(['restaurant_id' => $this->manager->restaurant_id]);
+        $otherRestaurant = Restaurant::factory()->create();
+        $otherCategory = Category::factory()->create(['restaurant_id' => $otherRestaurant->id]);
+
+        $this->getJson('/api/v1/categories')
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $firstCategory->id);
+
+        $this->getJson('/api/v1/categories', ['X-Restaurant-Id' => (string) $otherRestaurant->id])
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $otherCategory->id);
+
+        $this->getJson("/api/v1/categories/{$otherCategory->id}")->assertNotFound();
+    }
+
     public function test_manager_can_create_category(): void
     {
         $response = $this->actingAs($this->manager, 'sanctum')

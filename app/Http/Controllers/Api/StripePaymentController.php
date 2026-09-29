@@ -152,6 +152,8 @@ class StripePaymentController extends Controller
             }
 
             DB::transaction(function () use ($order, $table, $intent, $paidAmount) {
+                $currentTable = $this->tableServingOrder($table, $order);
+
                 // Registro de pagamento idempotente
                 Payment::firstOrCreate(
                     ['transaction_id' => $intent['id']],
@@ -166,11 +168,11 @@ class StripePaymentController extends Controller
 
                 $order->update(['status' => 'delivered']);
 
-                if ($table) {
-                    $table->update(['status' => 'free']);
+                if ($currentTable) {
+                    $currentTable->update(['status' => 'free']);
 
                     ActivityLog::where('subject_type', RestaurantTable::class)
-                        ->where('subject_id', $table->id)
+                        ->where('subject_id', $currentTable->id)
                         ->delete();
                 }
             });
@@ -244,6 +246,8 @@ class StripePaymentController extends Controller
                     $table = $order->table;
 
                     DB::transaction(function () use ($order, $table, $piId, $paidAmount) {
+                        $currentTable = $this->tableServingOrder($table, $order);
+
                         Payment::firstOrCreate(
                             ['transaction_id' => $piId],
                             [
@@ -257,8 +261,8 @@ class StripePaymentController extends Controller
 
                         $order->update(['status' => 'delivered']);
 
-                        if ($table) {
-                            $table->update(['status' => 'free']);
+                        if ($currentTable) {
+                            $currentTable->update(['status' => 'free']);
                         }
                     });
 
@@ -280,5 +284,20 @@ class StripePaymentController extends Controller
         $serviceFee = (float) $intent['metadata']['service_fee'];
 
         return round($subtotal + $serviceFee, 2) === $paidAmount;
+    }
+
+    private function tableServingOrder(?RestaurantTable $table, Order $order): ?RestaurantTable
+    {
+        if (! $table) {
+            return null;
+        }
+
+        $currentTable = RestaurantTable::query()->lockForUpdate()->find($table->id);
+
+        if (! $currentTable || ! in_array($currentTable->status, ['occupied', 'bill_requested'], true)) {
+            return null;
+        }
+
+        return $currentTable->activeOrder?->id === $order->id ? $currentTable : null;
     }
 }
