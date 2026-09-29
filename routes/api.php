@@ -19,7 +19,7 @@ use Illuminate\Support\Facades\Route;
 */
 
 // Rotas Públicas de Autenticação e Cardápio
-Route::post('/v1/auth/login', [AuthController::class, 'login']);
+Route::post('/v1/auth/login', [AuthController::class, 'login'])->middleware('throttle:login');
 
 Route::get('/v1/categories', [CategoryController::class, 'index']);
 Route::get('/v1/categories/{category}', [CategoryController::class, 'show']);

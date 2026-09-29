@@ -108,6 +108,32 @@ class AuthTest extends TestCase
             ->assertJsonValidationErrors(['email']);
     }
 
+    public function test_login_is_rate_limited_after_repeated_attempts(): void
+    {
+        for ($attempt = 0; $attempt < 5; $attempt++) {
+            $this->postJson('/api/v1/auth/login', [
+                'email' => 'tentativa@elo.com',
+                'password' => 'wrongpass',
+            ])->assertUnprocessable();
+        }
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'tentativa@elo.com',
+            'password' => 'wrongpass',
+        ])->assertStatus(429);
+
+        User::factory()->create([
+            'email' => 'outro@elo.com',
+            'password' => bcrypt('password123'),
+            'role_id' => Role::where('name', 'manager')->firstOrFail()->id,
+        ]);
+
+        $this->postJson('/api/v1/auth/login', [
+            'email' => 'outro@elo.com',
+            'password' => 'password123',
+        ])->assertOk();
+    }
+
     public function test_user_of_suspended_restaurant_cannot_login(): void
     {
         $restaurant = Restaurant::factory()->create(['status' => 'suspended']);

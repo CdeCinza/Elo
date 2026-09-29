@@ -78,6 +78,22 @@ class ProductApiTest extends TestCase
         $this->getJson("/api/v1/products/{$otherProduct->id}")->assertNotFound();
     }
 
+    public function test_product_search_treats_sql_syntax_as_text(): void
+    {
+        $category = Category::factory()->create(['restaurant_id' => $this->manager->restaurant_id]);
+        Product::factory()->create([
+            'restaurant_id' => $this->manager->restaurant_id,
+            'category_id' => $category->id,
+            'name' => 'Hambúrguer da Casa',
+        ]);
+
+        $search = urlencode("' OR 1=1 --");
+
+        $this->getJson("/api/v1/products?search={$search}")
+            ->assertOk()
+            ->assertJsonCount(0, 'data');
+    }
+
     public function test_manager_can_create_product_with_recipe_ingredients(): void
     {
         $ingredient = Ingredient::factory()->create(['name' => 'Carne 180g']);

@@ -59,7 +59,7 @@ class BrevoMailService
         ";
 
         try {
-            $response = Http::withoutVerifying()->withHeaders([
+            $response = Http::withHeaders([
                 'api-key' => $apiKey,
                 'accept' => 'application/json',
                 'content-type' => 'application/json',
