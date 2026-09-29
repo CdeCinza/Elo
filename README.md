@@ -4,6 +4,8 @@ O ELO é um protótipo funcional de operação para restaurantes. Ele reúne a e
 
 O projeto foi criado para demonstrar regras de negócio e integração entre interfaces: um pedido feito no tablet aparece na cozinha, avança por etapas de preparo e integra a comanda acompanhada pelo caixa. É um projeto em evolução, ainda não preparado para operar com pagamentos reais ou dados de clientes em produção.
 
+![Página inicial do Elo, com o fluxo entre mesa, cozinha e caixa](docs/elo-home.png)
+
 Leia também a [apresentação do Elo](docs/apresentacao-elo.md), com a ideia por trás do projeto, as tecnologias usadas e os aprendizados que motivaram sua criação.
 
 ## Conheça o fluxo
@@ -84,8 +86,10 @@ npx playwright test
 
 Os testes de navegador exigem frontend e API de teste em execução e um navegador Playwright instalado. Veja `frontend/README.md` para as variáveis do fluxo integrado.
 
+O workflow de CI executa a suíte PHP e o lint e build do frontend em pushes e pull requests. Nos pull requests, também roda os testes de navegador e acessibilidade que usam respostas simuladas. A jornada integrada entre mesa, cozinha e caixa continua exigindo um ambiente de teste exclusivo e as variáveis descritas no README do frontend.
+
 ## Estado e limites
 
-O fluxo principal funciona como demonstração técnica. Antes de disponibilizar uma instância pública, ainda é necessário revisar credenciais de exemplo, configuração de e-mail e Stripe, observabilidade e processo de implantação. Ingredientes já baixados no início do preparo não voltam automaticamente ao estoque quando um pedido é cancelado ou uma mesa é liberada; isso precisa de uma regra operacional definida para desperdício e estorno.
+O fluxo principal funciona como demonstração técnica. Antes de disponibilizar uma instância pública, ainda é necessário revisar credenciais de exemplo, configuração de e-mail e Stripe, observabilidade e processo de implantação. As rotas públicas de mesa usam um número previsível e ainda não exigem uma credencial individual da sessão para pedidos, chamados e consulta da comanda; esse fluxo precisa de autorização própria antes de ser exposto como serviço real. Ingredientes já baixados no início do preparo não voltam automaticamente ao estoque quando um pedido é cancelado ou uma mesa é liberada; isso precisa de uma regra operacional definida para desperdício e estorno.
 
 O [relatório de QA](docs/relatorio-qa-hardening.md) registra a revisão anterior e seu contexto de testes. As correções posteriores devem ser avaliadas pelos testes e pelo histórico do repositório.
