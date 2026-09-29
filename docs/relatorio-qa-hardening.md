@@ -129,13 +129,13 @@ Antes não havia tela para o dono cadastrar o cardápio: a API existia, mas um r
 
 ---
 
-## 3. Pendências (decisões de produto)
+## 3. Pendências e correções posteriores
 
 1. **Dados antigos com 3h de diferença.** Para uma demo limpa: `C:\Php8.5.1\php.exe artisan migrate:fresh --seed`. Isso **apaga todo o banco `elo`**, e a senha do Super Admin vai por e-mail (Brevo vencido).
-2. Cancelar um pedido ou forçar a liberação da mesa **não devolve o estoque** já baixado.
-3. `GET /products` e `/categories` sem o header `X-Restaurant-Id` retornam dados de todos os restaurantes (é cardápio público, mas vaza entre inquilinos).
-4. Um webhook atrasado do Stripe pode liberar uma mesa que já foi reaberta.
-5. O garçom não consegue adicionar itens, via `/orders/{id}/items`, em pedidos feitos pelo cliente (`OrderPolicy`).
+2. **Decisão operacional pendente:** cancelar um pedido ou forçar a liberação da mesa não devolve o estoque já baixado. Como a baixa ocorre quando o item entra em preparo, a regra de estorno precisa distinguir ingrediente ainda disponível de consumo ou desperdício real.
+3. **Corrigido em 29/09/2026:** listagens e detalhes públicos de produtos e categorias passaram a respeitar o restaurante selecionado; sem cabeçalho, usam apenas o restaurante padrão.
+4. **Corrigido em 29/09/2026:** confirmação e webhook do Stripe só liberam a mesa se ela ainda estiver atendendo o pedido pago.
+5. **Corrigido em 29/09/2026:** o garçom pode adicionar itens a pedidos de mesa criados pelo cliente, sem receber permissão geral para mudar o status desses pedidos.
 
 ---
 

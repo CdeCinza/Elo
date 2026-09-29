@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Interface do ELO
 
-## Getting Started
+Aplicação Next.js do [ELO Gastronomia](../README.md). A página inicial apresenta o caminho da comanda. As rotas `/table`, `/kitchen`, `/counter`, `/menu` e `/superadmin` atendem aos respectivos papéis no restaurante.
 
-First, run the development server:
+## Desenvolvimento
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+Com a API Laravel em execução na porta `8001`, crie `frontend/.env.local`:
+
+```dotenv
+ELO_API_ORIGIN=http://127.0.0.1:8001
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Depois, neste diretório:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm ci
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Abra `http://localhost:3000`. O Next.js encaminha `/api/v1/*` à API definida em `ELO_API_ORIGIN`. Se essa variável não estiver configurada, o destino padrão é `http://127.0.0.1:8000`.
 
-## Learn More
+`NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` habilita a opção de cartão quando o backend também tem chaves Stripe de teste. `NEXT_PUBLIC_WIFI_NAME` e `NEXT_PUBLIC_WIFI_PASSWORD` exibem os dados de Wi-Fi no tablet.
 
-To learn more about Next.js, take a look at the following resources:
+## Verificação
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run lint
+npm run build
+npx playwright test --list
+npx playwright test
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+O teste da página inicial não precisa de dados de restaurante. O teste integrado de mesa, cozinha e caixa precisa de API e banco **exclusivos para testes**, um gerente e uma mesa livre reservada para essa suíte. Defina as variáveis abaixo antes de executá-lo:
 
-## Deploy on Vercel
+```dotenv
+ELO_E2E_MANAGER_EMAIL=gerente-do-ambiente-de-teste
+ELO_E2E_MANAGER_PASSWORD=senha-do-ambiente-de-teste
+ELO_E2E_TABLE=numero-da-mesa-exclusiva
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Sem elas, o teste integrado é ignorado. Ele cria um pedido e reseta apenas a mesa indicada no fim; não o execute contra uma instância compartilhada. Para usar uma instância de frontend já em execução, defina `PLAYWRIGHT_TEST_BASE_URL`. Caso contrário, o Playwright inicia o Next.js localmente. Instale um navegador Playwright compatível ou defina `PLAYWRIGHT_BROWSER_CHANNEL=msedge` para usar o Microsoft Edge instalado na máquina.

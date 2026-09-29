@@ -1,300 +1,91 @@
-# 🍽️ Restaurant SaaS API & Management System (Elo)
+# ELO Gastronomia
 
-Um sistema completo e escalável de Gestão de Redes de Restaurantes e Pedidos em Tempo Real, construído com **Laravel**, **MySQL**, **Redis** e **Reverb**.
+O ELO é um protótipo funcional de operação para restaurantes. Ele reúne a experiência do cliente na mesa, a fila de preparo da cozinha, o atendimento no caixa e a gestão de cardápio e estoque em um único fluxo.
 
----
+O projeto foi criado para demonstrar regras de negócio e integração entre interfaces: um pedido feito no tablet aparece na cozinha, avança por etapas de preparo e integra a comanda acompanhada pelo caixa. É um projeto em evolução, ainda não preparado para operar com pagamentos reais ou dados de clientes em produção.
 
-## 📐 Diagrama Entidade-Relacionamento (ERD)
+Leia também a [apresentação do Elo](docs/apresentacao-elo.md), com a ideia por trás do projeto, as tecnologias usadas e os aprendizados que motivaram sua criação.
 
-Abaixo está a estrutura completa do modelo relacional derivado do `elo_restaurante_erd_v2`:
+## Conheça o fluxo
 
-```mermaid
-erDiagram
-  USERS ||--o{ ORDERS : creates
-  ROLES ||--o{ USERS : defines
-  CATEGORIES ||--o{ PRODUCTS : groups
-  PRODUCTS ||--o{ ORDER_ITEMS : contains
-  PRODUCTS ||--o{ PRODUCT_INGREDIENTS : uses
-  INGREDIENTS ||--o{ PRODUCT_INGREDIENTS : composes
-  RESTAURANT_TABLES ||--o{ ORDERS : hosts
-  ORDERS ||--o{ ORDER_ITEMS : has
-  ORDERS ||--o{ PAYMENTS : generates
+| Etapa | Interface | O que acontece |
+| --- | --- | --- |
+| 1. Mesa | `/table` e `/table/{mesa}` | Um gerente vincula o tablet; o cliente inicia o atendimento, consulta o cardápio, faz pedidos e solicita a conta. |
+| 2. Cozinha | `/kitchen` | A equipe acompanha os itens e atualiza o preparo. A baixa de ingredientes ocorre quando o item entra em preparo. |
+| 3. Caixa | `/counter` | O operador acompanha as mesas, lança itens, atende chamados e fecha a comanda. |
+| 4. Gestão | `/menu` e `/superadmin` | A gerência mantém produtos, categorias e ingredientes; o administrador da plataforma gerencia restaurantes. |
 
-  USERS {
-    string id PK
-    string name
-    string email
-    string role_id FK
-  }
-  ROLES {
-    string id PK
-    string name
-  }
-  CATEGORIES {
-    string id PK
-    string name
-  }
-  PRODUCTS {
-    string id PK
-    string category_id FK
-    string name
-    decimal price
-    boolean available
-  }
-  INGREDIENTS {
-    string id PK
-    string stock_qty
-    decimal stock_qty
-    string unit
-  }
-  PRODUCT_INGREDIENTS {
-    string id PK
-    string product_id FK
-    string ingredient_id FK
-    decimal qty_used
-  }
-  RESTAURANT_TABLES {
-    string id PK
-    string number
-    string status
-  }
-  ORDERS {
-    string id PK
-    string table_id FK
-    string user_id FK
-    string type
-    string status
-    decimal total
-  }
-  ORDER_ITEMS {
-    string id PK
-    string order_id FK
-    string product_id FK
-    int quantity
-    string notes
-  }
-  PAYMENTS {
-    string id PK
-    string order_id FK
-    string method
-    string status
-    decimal amount
-  }
-```
+As telas operacionais exigem autenticação e papel adequado. O tablet precisa ser vinculado a uma mesa com credenciais de gerente. A página inicial explica o fluxo para quem visita o projeto sem uma conta.
 
----
+## O que está implementado
 
-## 🗺️ Roadmap de Desenvolvimento Executivo
+- API REST versionada com autenticação Sanctum e papéis de administrador, gerência, garçom, cozinha e caixa.
+- Restaurantes com dados separados por `restaurant_id`, incluindo cardápio, mesas e pedidos.
+- Pedidos e comanda por mesa, estados de preparo por item e controle de estoque por ficha técnica.
+- Interfaces para cliente, cozinha, caixa, gestão de cardápio e administração da plataforma.
+- Atualização periódica das telas operacionais por consulta à API. O backend também emite eventos de status; a interface atual não depende de uma conexão WebSocket para funcionar.
+- Integração opcional com Stripe para cartão, com criação de PaymentIntent, confirmação e webhook assinado. Sem chaves de teste, essa opção não fica disponível na interface.
 
-### ⚙️ BACKEND (Laravel 12 API & Core Engine)
-1. **🛠️ 1. Setup do Ambiente:** [CONCLUÍDO]
-   Configurar Laravel, Docker (`App`, `MySQL 8`, `Redis`), validar conexões e execução limpa de `migrate` e `db:seed`.
-2. **📐 2. Modelagem do Banco (ER Completo):** [CONCLUÍDO]
-   Desenho prévio de todas as tabelas (cardápio, mesas, pedidos, cozinha, estoque, pagamento, usuários/roles).
-3. **🗄️ 3. Migrations e Seeders:** [CONCLUÍDO]
-   Construção de migrations reversíveis (`down`), com foreign keys, e criação de factories/seeders com dados realistas.
-4. **🔐 4. Autenticação & Papéis (Sanctum + RBAC):** [CONCLUÍDO]
-   Implementação de autenticação via token e papéis (`Dono`, `Gerente`, `Garçom`, `Cozinheiro`, `Caixa`) com Policies.
-5. **🍕 5. CRUD do Cardápio:** [CONCLUÍDO]
-   APIs robustas para Categorias, Produtos, Variações e Adicionais com Form Requests e API Resources.
-6. **🪑 6. Mesas & Abertura de Comanda:** [CONCLUÍDO]
-   Gestão de status de mesas (`livre`, `ocupada`, `reservada`) e vinculação de comandas ao atendimento do salão.
-7. **🛒 7. Pedidos (Máquina de Estados - Coração do Sistema):** [CONCLUÍDO]
-   Criação de pedidos (`salão`, `delivery`, `balcão`) com máquina de estados (`pendente` ➔ `preparo` ➔ `pronto` ➔ `entregue` ➔ `pago`).
-8. **📦 8. Estoque Vinculado a Receitas (Ficha Técnica):** [CONCLUÍDO]
-   Cadastro de insumos/ingredientes, consumo por ficha técnica (`qty_used`), baixa automática ao confirmar pedidos e bloqueio por escassez.
-9. **⚡ 9. Filas & Processamento Assíncrono (Jobs & Queues):** [PENDENTE / FUTURO]
-   Estruturação de filas (`database` / `redis`) com Jobs assíncronos para envio de notificações/e-mails de pedidos e geração de relatórios.
-10. **🪝 10. Pagamentos & Webhooks (Stripe / Gateway):** [PENDENTE / FUTURO]
-    Criação do endpoint público de webhook de pagamentos (`/api/v1/webhooks/payments`), validação HMAC e idempotência.
+## Stack
 
----
+- Backend: PHP 8.5, Laravel 13, Sanctum, PHPUnit e MySQL.
+- Frontend: Next.js 16, React 19, TypeScript e Tailwind CSS 4.
+- Testes de interface: Playwright e axe-core.
 
-### 💻 FRONTEND (Next.js 14 App Router + Tailwind + Shadcn)
+As versões instaladas podem ser conferidas em `composer.lock` e `frontend/package-lock.json`.
 
-#### 📱 Módulo 1: Cliente no Salão (Mobile First - QR Code na Mesa)
-* **Passo F1 - Setup do Projeto Next.js:** [CONCLUÍDO]
-  Inicialização com Next.js 14 App Router, TypeScript, Tailwind CSS, Lucide Icons (`lucide-react`) e cliente API Axios (`src/lib/api.ts`).
-* **Passo F2 - Tela Principal (Home do Salão):** [CONCLUÍDO]
-  * Header fixo com identificador da mesa (`Mesa 08` com badge de status) e botão de idioma/perfil (`SalonHeader.tsx`).
-  * Banner Hero Rotativo de destaques do chef/combo da casa (`HeroBanner.tsx`).
-  * Pills de ações rápidas: `Chamar Garçom`, `Ver Conta Atual`, `Wifi da Casa` (`QuickActionsBar.tsx`).
-  * Grid de Feed Rápido com "Mais Pedidos" e "Sugestões para Compartilhar" (`QuickFeed.tsx`).
-  * Rota dinâmica Next.js `/table/[tableId]` funcional com build verificado.
-* **Passo F3 - Tela de Cardápio (Exploração & Customização):** [CONCLUÍDO]
-  * Campo de busca textual + chips de filtro rápido (Categorias: Burgers, Entradas, Bebidas, Sobremesas).
-  * Sticky Sub-nav com navegação fluida em abas e layout responsivo.
-  * Cards de item com foto 1:1, tempo de preparo (`15-20 min`) e preço em destaque.
-  * Bottom Sheet / Modal deslizante de customização (ponto da carne, adicionais/extras e observações) (`table/[tableId]/menu/page.tsx`).
-* **Passo F4 - Tela de Pedido Online no Local (Mesa & Cozinha):** [CONCLUÍDO]
-  * Comanda Digital Ativa com badges em tempo real: `Na Fila` (Amarelo) ➔ `Em Preparo` (Laranja) ➔ `Pronto/Entregue` (Verde).
-  * Calculadora de divisão de conta (Split por pessoa), taxa de serviço opcional (10%) e modal com QR Code Pix (`table/[tableId]/order/page.tsx`).
+## Rodar localmente
 
-#### 🖥️ Módulo 2: Balcão, Caixa e Cozinha (Desktop & Tablet)
-* **Passo F5 - Painel Desktop do Balcão / Caixa (POS/PDV):** [CONCLUÍDO]
-  * Mapa de Salão em Grid Interativo com status visual das mesas (`Livre`, `Ocupada`, `Pede Conta`).
-  * Split screen para visualização e fechamento rápido de comandas no caixa (`counter/page.tsx`).
-* **Passo F6 - KDS / Tela de Cozinha (Real-time Kanban):** [CONCLUÍDO]
-  * Fila Kanban (`Novos Pedidos` ➔ `Em Preparo` ➔ `Pronto p/ Servir`) com contadores de tempo por pedido e aviso sonoro (`kitchen/page.tsx`).
+Pré-requisitos: PHP compatível com as dependências do Composer (8.4.1 ou superior), Composer, MySQL, Node.js e npm. O ambiente usado no desenvolvimento roda PHP 8.5.1, backend na porta `8001` e frontend na porta `3000`.
 
----
+1. Instale as dependências PHP e copie `.env.example` para `.env`. Configure `DB_CONNECTION=mysql`, `DB_HOST`, `DB_PORT`, `DB_DATABASE`, `DB_USERNAME` e `DB_PASSWORD` para um banco **local separado**. Ajuste `APP_URL=http://localhost:8001`.
+2. Gere a chave e prepare o banco:
 
-## 📌 Visão Geral do Projeto
+   ```bash
+   composer install
+   php artisan key:generate
+   php artisan migrate
+   php artisan db:seed
+   ```
 
-Este projeto foi projetado para atender redes de restaurantes (multi-loja), permitindo o gerenciamento centralizado de marcas/redes, catálogo de produtos por loja, fluxo completo de pedidos com máquina de estados, controle rigoroso de estoque, pagamentos via Webhook e atualizações em tempo real para a cozinha e cliente.
+3. Inicie a API:
 
----
+   ```bash
+   php artisan serve --port=8001
+   ```
 
-## 📋 Checklist de Escopo & Arquitetura
+4. No diretório `frontend`, instale as dependências e crie `.env.local` com `ELO_API_ORIGIN=http://127.0.0.1:8001`. Depois inicie o frontend:
 
-### 1. 🗄️ Modelagem e Banco de Dados
-- [ ] **Tabelas Relacionadas (8 a 10+):**
-  - `roles` (Papéis/Permissões: Dono, Gerente, Garçom, Cozinheiro, Caixa)
-  - `users` (Usuários vinculados a papéis)
-  - `categories` (Categorias do cardápio: Entradas, Pratos, Bebidas)
-  - `products` (Produtos do cardápio e preços)
-  - `ingredients` (Estoque de insumos/ingredientes)
-  - `product_ingredients` (Ficha técnica / receita N:N que associa ingrediente a produto)
-  - `restaurant_tables` (Mesas do restaurante e seus status)
-  - `orders` (Pedidos do salão/delivery/balcão)
-  - `order_items` (Itens do pedido + observações)
-  - `payments` (Histórico de transações de pagamento)
-  - `activity_logs` / `notifications` (Registros polimórficos)
-- [ ] **Relacionamentos:**
-  - 1:N (`ROLES` ➔ `USERS`, `CATEGORIES` ➔ `PRODUCTS`, `RESTAURANT_TABLES` ➔ `ORDERS`, `USERS` ➔ `ORDERS`, `ORDERS` ➔ `ORDER_ITEMS`, `ORDERS` ➔ `PAYMENTS`)
-  - N:N via Pivot (`PRODUCTS` ↔ `INGREDIENTS` através de `PRODUCT_INGREDIENTS`)
-  - Polimórfico (`activity_logs` / `notifications` associados a `Order`, `Product`, `User`)
-- [ ] **Migrations Versionadas & Reversíveis:**
-  - Método `down()` totalmente funcional em todas as migrations.
-- [ ] **Seeders & Factories Realistas:**
-  - Geração de dados de teste realistas via Factories e Seeders estruturados.
+   ```bash
+   cd frontend
+   npm ci
+   npm run dev
+   ```
 
----
+5. Abra `http://localhost:3000`. A API usa o prefixo `/api/v1`.
 
-### 2. 🔐 Autenticação & Autorização
-- [ ] **Autenticação API:** Laravel Sanctum emitindo tokens para SPA / Mobile / Integrações.
-- [ ] **Papéis & Permissões (RBAC / Custom):**
-  - 👑 **Dono da Rede:** Acesso total a todas as lojas e métricas da rede.
-  - 🏬 **Gerente da Loja:** Acesso restrito à sua loja específica (produtos, estoque, relatórios da unidade).
-  - 👨‍🍳 **Funcionário / Atendente:** Acesso operacional (visualizar/atualizar pedidos da loja).
-- [ ] **Policies Protegendo Recursos:**
-  - Isolamento de multi-tenancy / loja através de Policies do Laravel.
+O seeder gera uma senha para o super administrador e cria contas operacionais de exemplo. Confira a saída do seeder e altere as senhas antes de expor qualquer instância. Não execute `migrate:fresh` em um banco que contenha dados que você queira preservar.
 
----
+### Configurações opcionais
 
-### 3. 🚀 API RESTful
-- [ ] **CRUD Completo:** Padronização REST para recursos principais.
-- [ ] **Form Requests:** Validação rigorosa e sanitização dos dados de entrada.
-- [ ] **API Resources & Collections:** Formatação customizada das respostas JSON (sem exposição direta de Models).
-- [ ] **Filtros, Busca & Paginação:** Implementados nas listagens de grande volume (`/api/v1/products`, `/api/v1/orders`).
-- [ ] **Tratamento de Erros Padronizado:**
-  - Formato JSON consistente para `404`, `422`, `403`, `500`.
-- [ ] **Documentação da API:** Collection exportada do Postman ou Swagger (L5-Swagger / Scramble).
+Para testar cartão, configure `STRIPE_SECRET_KEY` e `STRIPE_WEBHOOK_SECRET` no backend e `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` no frontend, usando somente chaves de teste. `NEXT_PUBLIC_WIFI_NAME` e `NEXT_PUBLIC_WIFI_PASSWORD` exibem a ação de Wi-Fi no tablet. O envio de e-mail depende da configuração do provedor no backend.
 
----
+## Testes
 
-### 4. 🧠 Regras de Negócio Reais
-- [ ] **Máquina de Estados de Pedidos:**
-  - `pendente` ➔ `confirmado` ➔ `preparo` ➔ `pronto` ➔ `entregue` (ou `cancelado`).
-  - Validação rigorosa de transições proibidas.
-- [ ] **Controle Automático de Estoque:**
-  - Baixa automática de ingredientes via Ficha Técnica (`product_ingredients`) ao confirmar o pedido.
-  - Bloqueio imediato na criação/confirmação do pedido se o ingrediente estiver esgotado.
-- [ ] **Cálculos Financeiros & Lógica Não-Trivial:**
-  - Cálculo de subtotal, taxa de entrega dinâmica por distância/bairro e cupons de desconto.
-
----
-
-### 5. ⚡ Processamento Assíncrono & Queues
-- [ ] **Jobs em Fila (Redis / Database):**
-  - Job 1: Envio de e-mail/notificação ao alterar status do pedido.
-  - Job 2: Processamento/recálculo assíncrono de estoque e geração de relatórios diários.
-- [ ] **Tratamento de Failed Jobs:**
-  - Estratégia de retries configurada, logging detalhado em falhas e tabela `failed_jobs`.
-
----
-
-### 6. 🪝 Webhooks de Pagamento
-- [ ] **Endpoint Público de Webhook:** Recepção de notificações de pagamento (`/api/v1/webhooks/payments`).
-- [ ] **Segurança & Assinatura:** Validação da assinatura HMAC do gateway de pagamento.
-- [ ] **Idempotência:** Garantia de que a recepção de webhooks duplicados não processe o pagamento duas vezes (controle por ID de transação).
-
----
-
-### 7. 📡 Comunicação em Tempo Real (Laravel Reverb)
-- [ ] **Broadcasting End-to-End:** Atualizações ao vivo do status de pedidos para a tela da cozinha e painel do cliente.
-- [ ] **Canais Privados Protegidos:** `PrivateChannel` exigindo autenticação do usuário/loja no broadcasting.
-
----
-
-### 8. 🧪 Testes Automatizados
-- [ ] **Suíte de Testes de Feature (PHPUnit / Pest):**
-  - Fluxo completo de criação de pedido.
-  - Processamento e idempotência de webhook de pagamento.
-  - Testes de permissões negadas (Policies & RBAC).
-- [ ] **Meta de Cobertura:** 15 a 20+ testes focados nos fluxos críticos da aplicação.
-
----
-
-### 9. 🐳 Infraestrutura & Deploy
-- [ ] **Docker & Docker Compose:**
-  - Containers para `App (PHP-FPM / Nginx)`, `MySQL 8`, `Redis`, `Reverb`.
-- [ ] **Deploy em Produção:**
-  - Deploy configurado em nuvem (Railway, Render ou VPS) com HTTPS e domínio/subdomínio.
-- [ ] **CI/CD Pipeline:**
-  - GitHub Actions executando linters e a suíte de testes a cada `push` e `pull request`.
-
----
-
-### 10. 📚 Documentação & Mídia
-- [ ] **README Completo:** Instruções detalhadas de setup local, variáveis de ambiente e arquitetura.
-- [ ] **Diagrama do Banco de Dados:** Modelo ER Mermaid renderizado diretamente no README.
-- [ ] **Demonstração Visual:** Prints/GIFs demonstrando a API e o fluxo em tempo real.
-
----
-
-## 🛠️ Tecnologias Utilizadas
-
-- **Linguagem:** PHP 8.5+
-- **Framework:** Laravel 12+
-- **Autenticação:** Laravel Sanctum
-- **Banco de Dados:** MySQL 8.0
-- **Cache & Filas:** Redis
-- **Real-Time:** Laravel Reverb
-- **Containerização:** Docker & Docker Compose
-- **Testes:** PHPUnit / Pest PHP
-
----
-
-## ⚙️ Como Rodar o Projeto Localmente (Futuro Setup)
+Os testes PHP usam o banco `elo_testing`, definido em `phpunit.xml`. Crie e configure esse banco antes de executar a suíte; ele deve ser separado do banco de demonstração.
 
 ```bash
-# 1. Clonar o repositório
-git clone https://github.com/seu-usuario/elo.git
-cd elo
-
-# 2. Copiar arquivo de ambiente
-cp .env.example .env
-
-# 3. Subir os containers via Docker
-docker-compose up -d --build
-
-# 4. Instalar dependências PHP via Composer
-docker-compose exec app composer install
-
-# 5. Gerar chave da aplicação
-docker-compose exec app php artisan key:generate
-
-# 6. Rodar as migrations e seeders
-docker-compose exec app php artisan migrate --seed
-
-# 7. Executar a fila e o servidor de tempo real (Reverb)
-docker-compose exec app php artisan queue:work
-docker-compose exec app php artisan reverb:start
+php artisan test --compact
+cd frontend
+npm run lint
+npm run build
+npx playwright test
 ```
 
----
+Os testes de navegador exigem frontend e API de teste em execução e um navegador Playwright instalado. Veja `frontend/README.md` para as variáveis do fluxo integrado.
 
-## 📄 Licença
+## Estado e limites
 
-Este projeto é um software de código aberto sob a licença [MIT](LICENSE).
+O fluxo principal funciona como demonstração técnica. Antes de disponibilizar uma instância pública, ainda é necessário revisar credenciais de exemplo, configuração de e-mail e Stripe, observabilidade e processo de implantação. Ingredientes já baixados no início do preparo não voltam automaticamente ao estoque quando um pedido é cancelado ou uma mesa é liberada; isso precisa de uma regra operacional definida para desperdício e estorno.
+
+O [relatório de QA](docs/relatorio-qa-hardening.md) registra a revisão anterior e seu contexto de testes. As correções posteriores devem ser avaliadas pelos testes e pelo histórico do repositório.
