@@ -53,9 +53,34 @@ export default function RootHomePage() {
             A experiência do salão, do caixa e da cozinha em harmonia.
           </h1>
           <p className="text-base text-[#6E6760] leading-relaxed max-w-xl">
-            Selecione o ambiente operacional para iniciar o atendimento dos clientes ou gerenciar os pedidos em tempo real.
+            Conheça o caminho de um pedido, da escolha do cliente ao preparo e ao fechamento da conta.
           </p>
         </div>
+
+        <section aria-labelledby="flow-title" className="mb-8 rounded-2xl border border-[#EAE6E1] bg-white p-6 sm:p-7">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#C84E1F]">Como funciona</p>
+              <h2 id="flow-title" className="mt-1 font-editorial text-2xl text-[#191817]">Uma comanda, três pontos de vista</h2>
+            </div>
+            <p className="max-w-sm text-xs leading-relaxed text-[#6E6760]">
+              As telas operacionais usam login da equipe. O tablet precisa ser vinculado a uma mesa por um gerente.
+            </p>
+          </div>
+          <ol className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              ['01', 'Mesa', 'O cliente escolhe pratos, acompanha o consumo e solicita a conta.'],
+              ['02', 'Cozinha', 'A equipe recebe os itens e atualiza cada etapa do preparo.'],
+              ['03', 'Caixa', 'O operador acompanha mesas, lança itens e fecha a comanda.'],
+            ].map(([number, title, description]) => (
+              <li key={number} className="rounded-xl bg-[#F9F8F6] p-4">
+                <span className="text-xs font-bold text-[#9E3712]">{number}</span>
+                <h3 className="mt-2 text-sm font-bold text-[#191817]">{title}</h3>
+                <p className="mt-1 text-xs leading-relaxed text-[#6E6760]">{description}</p>
+              </li>
+            ))}
+          </ol>
+        </section>
 
         {/* Operational Modules - Asymmetric, intentional layout */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
@@ -181,7 +206,7 @@ export default function RootHomePage() {
       <footer className="border-t border-[#EAE6E1] py-6 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[#6E6760]">
           <span>ELO Gastronomia • Cardápio Digital & Operação Integrada</span>
-          <span>Versão 1.0 • Laravel & Next.js</span>
+          <span>Projeto em evolução • Laravel & Next.js</span>
         </div>
       </footer>
     </main>

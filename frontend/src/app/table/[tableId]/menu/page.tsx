@@ -191,10 +191,12 @@ export default function MenuPage() {
           )}
 
           {filteredProducts.map((product) => (
-            <div
+            <button
               key={product.id}
+              type="button"
               onClick={() => handleOpenCustomizer(product)}
-              className="flex items-center justify-between p-4 rounded-2xl bg-white border border-[#EAE6E1] hover:border-[#191817]/30 transition-colors cursor-pointer group"
+              aria-label={`Personalizar e pedir ${product.name}`}
+              className="flex w-full items-center justify-between p-4 rounded-2xl bg-white border border-[#EAE6E1] hover:border-[#191817]/30 transition-colors cursor-pointer group text-left"
             >
               <div className="flex-1 pr-4">
                 <div className="flex items-center gap-2 mb-1">
@@ -203,9 +205,9 @@ export default function MenuPage() {
                   </span>
                 </div>
 
-                <h3 className="text-sm font-bold text-[#191817]">
+                <span className="block text-sm font-bold text-[#191817]">
                   {product.name}
-                </h3>
+                </span>
                 <p className="text-xs text-[#6E6760] line-clamp-2 mt-0.5 mb-2.5 leading-relaxed">
                   {product.description}
                 </p>
@@ -223,16 +225,14 @@ export default function MenuPage() {
                   alt={product.name}
                   className="w-full h-full object-cover"
                 />
-                <button
-                  type="button"
-                  aria-label={`Personalizar e pedir ${product.name}`}
+                <span
                   className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white flex items-center justify-center transition-colors shadow-sm"
-                  title="Personalizar e adicionar"
+                  aria-hidden="true"
                 >
                   <Plus className="w-4 h-4" />
-                </button>
+                </span>
               </div>
-            </div>
+            </button>
           ))}
         </main>
       </div>

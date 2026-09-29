@@ -131,7 +131,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
               <span
                 className={`flex items-center gap-1 text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full whitespace-nowrap ${
                   isUnavailable
-                    ? 'text-[#6E6760] bg-[#EAE6E1] border border-[#D8D2C9]'
+                    ? 'text-[#57534E] bg-[#EAE6E1] border border-[#D8D2C9]'
                     : tableStatus.includes('Conta') || tableStatus.includes('solicitada')
                     ? 'text-amber-900 bg-amber-100 border border-amber-200'
                     : tableStatus.includes('ocupada')
