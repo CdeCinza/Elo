@@ -1,15 +1,19 @@
 import type { Metadata } from "next";
-import { Playfair_Display, Plus_Jakarta_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
-const serifFont = Playfair_Display({
+const serifFont = localFont({
+  src: "../fonts/PlayfairDisplay.ttf",
   variable: "--font-serif",
-  subsets: ["latin"],
+  weight: "400 900",
+  display: "swap",
 });
 
-const sansFont = Plus_Jakarta_Sans({
+const sansFont = localFont({
+  src: "../fonts/PlusJakartaSans.ttf",
   variable: "--font-sans",
-  subsets: ["latin"],
+  weight: "200 800",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
