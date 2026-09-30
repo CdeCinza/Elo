@@ -2,7 +2,7 @@
 
 > **Data:** 28/09/2026
 > **Escopo:** backend Laravel (API), frontend Next.js (tablet, cardápio, comanda, caixa, cozinha, super admin) e banco MySQL local
-> **Resultado:** 99 testes de backend passando (eram 65), 493 asserções. Build e lint do frontend sem erros. Nenhuma tela com rolagem lateral em 375px.
+> **Resultado na data do relatório:** 99 testes de backend passando (eram 65), 493 asserções. Build e lint do frontend sem erros. Nenhuma tela com rolagem lateral em 375px. Estes números são um registro histórico, não o resultado da suíte atual.
 
 Este documento tem três partes:
 

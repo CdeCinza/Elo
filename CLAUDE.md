@@ -147,7 +147,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 
 - This project uses PHPUnit. Create tests with `php artisan make:test --phpunit {name}`.
 - Do not include the test suite directory in `{name}`. Use `SomeFeatureTest`, not `Feature/SomeFeatureTest`.
-- Read the `testing-best-practices` skill for guidance on coverage, naming, structure, dependency isolation, and review.
+- Read the relevant installed testing skill for the task (for example, `unit-testing`, `api-testing` or `playwright-automation`) for guidance on coverage, naming, structure, dependency isolation, and review.
 
 ## Running Tests
 

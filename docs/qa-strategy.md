@@ -1,164 +1,98 @@
-# 🛡️ Estratégia de Qualidade de Software (QA Strategy) - ELO Gastronomia
+# Estratégia de qualidade — Elo
 
-> **Versão:** 1.0  
-> **Autor / Owner:** Lead QA & Engenharia Elo  
-> **Status:** Ativo  
-> **Última Atualização:** Setembro / 2026  
+> Estado: estratégia para um protótipo funcional, revisada em 30/09/2026. Responsável: mantenedor do projeto. Este documento distingue verificações existentes de próximos passos; não representa uma certificação para uso em produção.
 
----
+### 1. Resumo
 
-### 1. Scope & Objectives
+O Elo conecta mesa, cozinha, caixa e gestão. A prioridade de qualidade é manter pedidos, pagamentos, permissões entre restaurantes e baixa de estoque coerentes ao longo desse fluxo. Os testes automatizados ajudam a detectar regressões, mas uma instância pública ainda exige autorização própria para a sessão da mesa e validação operacional adicional.
 
-#### 1.1 Escopo Coberto (In-Scope)
-- **Frente de Salão & Totem Tablet (`/table`)**: Check-in do cliente, chamado de garçom, seleção de mesa, navegação de cardápio, personalização de pratos e envio de pedidos.
-- **Linha de Produção & Cozinha (`/kitchen` - KDS)**: Fila cronológica FIFO de comandas, separação de praças (Chapa, Fritura, Sobremesas), transições de estado (`pending` ➔ `preparing` ➔ `ready` ➔ `delivered`).
-- **Frente de Caixa & Balcão (`/counter` - POS)**: Monitoramento de mesas ativas, lançamentos manuais, recebimento de pagamentos (PIX, Cartão, Dinheiro), fechamento e liberação de mesas.
-- **Painel Administrativo & Multi-Tenancy (`/superadmin`)**: Gestão de filiais, isolamento de inquilinos (tenants), métricas consolidadas e provisionamento de usuários.
-- **Backend API (Laravel 12 / PHP 8.5)**: Máquina de estados de pedidos, regras de negócio de estoque com ficha técnica de ingredientes e autenticação Sanctum.
+### 2. Escopo e objetivos
 
-#### 1.2 Fora de Escopo (Out-of-Scope)
-- Gateways de pagamento externos em modo real (testados exclusivamente via PSP Sandboxes e stubs).
-- Infraestrutura física de impressoras fiscais térmicas (validadas por emuladores ESC/POS).
+Estão no escopo a API Laravel, o frontend Next.js, o banco MySQL, as permissões por papel e restaurante, a integração opcional com Stripe em ambiente de teste e a acessibilidade das telas principais. Pagamentos reais, operação em restaurante, dispositivos físicos, disponibilidade e monitoramento de produção não foram validados.
 
-#### 1.3 Objetivos Mensuráveis
-1. Manter a taxa de escape de defeitos para produção (*Defect Escape Rate*) abaixo de **3%**.
-2. Garantir que o pipeline de validação contínua (CI) retorne feedback em menos de **10 minutos**.
-3. Garantir **100% de cobertura E2E nos 4 fluxos críticos** (Check-in, Pedido, KDS e Fechamento de Conta).
+Objetivos para a próxima revisão: manter a CI verde em cada pull request; executar a jornada integrada em um ambiente exclusivo antes de uma demonstração pública; acrescentar testes para as regras de autorização da sessão da mesa quando elas forem implementadas; e registrar duração e falhas intermitentes da CI antes de definir metas numéricas.
 
----
+### 3. Níveis e tipos de teste
 
-### 2. Test Levels & Types
+| Nível | O que cobre hoje | Execução |
+| --- | --- | --- |
+| PHPUnit unitário e feature | Regras de pedidos, estoque, pagamentos, autenticação, papéis e isolamento por restaurante. A maior parte da suíte está em `tests/Feature`. | Suíte PHP na CI em push e pull request. |
+| Playwright com respostas simuladas | Página inicial, uso do cardápio pelo teclado e verificações automatizadas de acessibilidade em telas selecionadas. | CI em pull requests. |
+| Playwright integrado | Pedido iniciado na mesa e conferido na cozinha e no caixa com API real. | Manualmente, com banco e mesa exclusivos; o teste é ignorado sem as variáveis exigidas. |
+| Verificações estáticas | Lint e build do frontend, auditoria de dependências PHP e JavaScript. | CI em push e pull request. |
 
-| Nível | O que Valida | Responsável | Ferramenta | Proporção Alvo | Frequência |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Unitário** | Lógica de modelos, cálculo de taxas, regras de estoque | Dev | PHPUnit | 70% | A cada commit |
-| **Integração / Feature** | Ciclo de vida de endpoints da API, autenticação, transações DB | Dev / QA | PHPUnit / Sanctum | 20% | A cada PR |
-| **E2E (End-to-End)** | Fluxos reais de salão no navegador (Tablet ➔ KDS ➔ POS) | QA / SDET | Playwright (TS) | 10% | Pré-merge / Deploy |
-| **Regressão Visual** | Fidelidade editorial do design system, quebras de layout | QA | Playwright Screenshots | Amostragem | Diário / Nightly |
-| **Segurança & Políticas** | Isolamento multi-tenancy e autorização baseada em papéis (RBAC) | Sec / QA | PHPUnit Policies | 100% dos controllers | A cada PR |
+O axe-core identifica parte dos problemas automatizáveis de WCAG 2.2 AA. Seu resultado não substitui testes de teclado completos, leitor de tela e avaliação humana.
 
----
+### 4. Distribuição dos testes
 
-### 3. Test Pyramid Analysis
+A suíte é concentrada em testes de integração/feature do Laravel, com poucos testes unitários isolados e poucos cenários de navegador. Não há medição de cobertura de linhas, duração histórica ou taxa de flakiness registrada neste repositório; portanto, uma proporção como 70/20/10 não descreve o estado atual.
 
-```text
-       ▲
-      / \        E2E (10%) - Playwright (Jornada do Cliente, KDS e Balcão)
-     /   \       
-    /=====\      Integração (20%) - Feature Tests Laravel & API Contracts
-   /       \     
-  /=========\    Unitários (70%) - Cálculo de comanda, Fichas Técnicas, Enums
-```
+Ao ampliar a suíte, priorizar testes de feature para regras entre API e banco, testes unitários para cálculos e transições isoladas e Playwright apenas para jornadas que precisam do navegador. Contar os cenários por nível e medir o tempo da CI antes de estabelecer uma meta de proporção.
 
-- **Diagnóstico da Pirâmide**: Pirâmide saudável e equilibrada. O sistema evita o anti-padrão de *Ice Cream Cone* (excesso de E2E lentos) delegando a validação pesada de regras e combinações aos testes de Feature e Unit do Laravel, enquanto o Playwright atesta a usabilidade e sincronismo real do navegador.
+### 5. Riscos que orientam a cobertura
 
----
+| Risco | Impacto | Evidência e próximo teste |
+| --- | --- | --- |
+| Uma sessão pública de mesa operar outra mesa | Alto | O README registra a ausência de credencial individual da sessão; definir a autorização e testar tentativa de acesso cruzado. |
+| Acesso a dados de outro restaurante | Alto | Há testes de escopo na API; manter cenários cruzados para cada novo recurso. |
+| Pagamento ou fechamento deixar estado inconsistente | Alto | Há testes PHP para Stripe e caixa; manter casos de webhook repetido, pedido alterado e valor divergente. |
+| Estoque baixado não ser estornado | Médio | A regra após cancelamento ainda depende de decisão operacional; testá-la quando for definida. |
+| Tela exibir estado diferente da API | Médio | Manter a jornada integrada e casos de erro de rede, permissão e resposta atrasada. |
 
-### 4. Risk Assessment Matrix (Matriz de Risco 5x5)
+### 6. Ambientes
 
-| Área / Funcionalidade | Impacto (1-5) | Probabilidade (1-5) | Risco (I x P) | Nível | Estratégia de Teste |
-| :--- | :---: | :---: | :---: | :---: | :--- |
-| **Processamento de Pagamentos & Fechamento de Comanda** | 5 | 3 | **15** | **CRÍTICO** | E2E Playwright + Feature Test + Validação de Saldo |
-| **Isolamento de Dados Multi-Tenancy** | 5 | 2 | **10** | **ALTO** | Feature Tests cruzados de restaurantes diferentes |
-| **Fila em Tempo Real da Cozinha (KDS FIFO)** | 4 | 3 | **12** | **ALTO** | E2E Playwright sincronizado (ordem de chegada) |
-| **Cardápio Digital & Adição de Itens com Notas** | 4 | 2 | **8** | **MÉDIO** | E2E Playwright + Testes de Componentes |
-| **Controle de Insumos / Baixa Automática de Estoque** | 3 | 2 | **6** | **MÉDIO** | Feature Tests (StockRecipeTest) |
-| **Customização de Tema / Cores do Restaurante** | 2 | 2 | **4** | **BAIXO** | Teste visual pontual |
+| Ambiente | Uso atual | Limite |
+| --- | --- | --- |
+| Local | Desenvolvimento e testes pontuais. | Dados de demonstração não devem ser confundidos com dados de teste. |
+| CI | MySQL de serviço para PHPUnit; frontend compilado e testes de navegador com respostas simuladas nos pull requests. | Não executa a jornada integrada com API real. |
+| Ambiente exclusivo de E2E | Configuração documentada em `frontend/README.md`. | Precisa de gerente, banco e mesa reservada; não há job automático correspondente na CI. |
 
----
+Não há staging ou produção configurados como ambientes de validação neste repositório.
 
-### 5. Environment Strategy
+### 7. Escolha das ferramentas
 
-| Ambiente | Propósito | Tipos de Teste Executados | Base de Dados |
-| :--- | :--- | :--- | :--- |
-| **Local (Dev)** | Desenvolvimento ágil e TDD | Unitários, Feature Tests pontuais | MySQL Local / SQLite in-memory |
-| **CI (GitHub Actions)** | Verificação automática de integridade de PR | PHPUnit completo, Pint (linting), Playwright Headless | Ephemeral MySQL / SQLite |
-| **Staging / Homologação** | Validação pré-produção com a equipe | E2E Completo, Testes Exploratórios com Tablets físicos | Dados espelhados higienizados |
-| **Produção** | Operação real dos restaurantes | Healthcheck contínuo, monitoramento sintético | Produção (Isolamento total) |
+PHPUnit acompanha as convenções de testes do Laravel e permite verificar regras de negócio com banco de teste. Playwright permite testar a interação da mesa e observar o pedido nas telas operacionais. Axe-core acrescenta uma verificação automatizada de acessibilidade. Essas escolhas correspondem às ferramentas presentes no projeto; não há comparação medida de custo, velocidade ou manutenção com alternativas.
 
----
+### 8. Critérios de entrada e saída
 
-### 6. Tool Selection Rationale
+- PHP: usar `elo_testing` isolado; a saída é a suíte PHPUnit passando sem testes ignorados inesperados.
+- Frontend: dependências instaladas; a saída é lint e build passando.
+- Navegador com respostas simuladas: build disponível; a saída é a suíte de apresentação e acessibilidade passando.
+- Jornada integrada: API, frontend e banco exclusivos disponíveis, com gerente e mesa reservada; a saída é pedido visível na cozinha e no caixa e limpeza da mesa de teste.
+- Demonstração pública: revisar autorização da sessão da mesa, credenciais de exemplo, integração de pagamentos e configuração de e-mail antes de expor uma instância.
 
-| Critério (Peso) | Playwright | Cypress | Selenium |
-| :--- | :---: | :---: | :---: |
-| **Suporte Nativo a Múltiplas Abas/Contextos (POS + KDS + Tablet)** (25%) | **5** | 2 | 3 |
-| **Velocidade & Auto-Waiting Nativo (sem `waitForTimeout`)** (20%) | **5** | 4 | 2 |
-| **Integração com TypeScript & Next.js** (20%) | **5** | 4 | 3 |
-| **Gravação de Traces e Vídeos em Falhas** (15%) | **5** | 4 | 2 |
-| **Custo de Manutenção / Estabilidade** (20%) | **5** | 3 | 2 |
-| **Pontuação Ponderada** | **5.0** | 3.3 | 2.5 |
+### 9. Portões de qualidade
 
-**Decisão**: **Playwright** foi escolhido como a ferramenta padrão por permitir orquestrar facilmente múltiplos navegadores e páginas simultâneas (essencial para testar um pedido saindo do Tablet e caindo em tempo real no KDS e no Balcão).
+A CI atual exige PHPUnit, auditoria de dependências, lint e build em push e pull request. Em pull request, também exige os testes Playwright `project-tour.spec.ts` e `accessibility.spec.ts`. Ela não executa Pint, a jornada Playwright com API real, testes de carga ou revisão humana como portões automáticos.
 
----
+Para mudanças em PHP, a convenção local exige executar Pint antes de finalizar. Para alterações no fluxo principal, executar também a jornada integrada em ambiente exclusivo antes de divulgá-la como validada.
 
-### 7. CI Scaling Levers
+### 10. Métricas
 
-1. **Paralelização e Sharding**: Execução paralela por praças e suítes isoladas (`fullyParallel: true`).
-2. **Fail Fast**: Interrupção em caso de regressões críticas de compilação ou banco de dados.
-3. **Artifacts de Diagnóstico**: Retenção automática de Screenshots e Traces `.zip` apenas em caso de falha (`retain-on-failure`).
+| Métrica | Situação atual | Próxima meta verificável | Frequência |
+| --- | --- | --- | --- |
+| Resultado da CI | Jobs configurados no workflow. | Todos os jobs obrigatórios verdes no pull request. | Por PR. |
+| Jornada integrada | Teste existe, mas é ignorado sem configuração. | Registrar uma execução completa antes de cada demonstração pública. | Por demonstração. |
+| Duração da CI | Sem histórico consolidado neste documento. | Registrar uma linha de base antes de fixar limite. | Mensal. |
+| Falhas intermitentes | Sem linha de base. | Classificar falhas repetidas antes de fixar percentual. | Mensal. |
+| Cobertura de código | Não medida aqui. | Medir cobertura das regras de maior risco antes de definir porcentagem. | Na próxima revisão. |
 
----
+Taxa de defeitos em produção não se aplica enquanto o Elo não operar em produção.
 
-### 8. Entry / Exit Criteria
+### 11. Próximos marcos
 
-#### Testes de Unidade / Feature
-- **Entrada**: Código compila sem erros, migrations aplicadas.
-- **Saída**: 100% de aprovação na suíte PHPUnit, 0 erros no Laravel Pint.
+1. Corrigir a autorização da sessão pública de mesa e adicionar testes de acesso entre mesas.
+2. Automatizar a jornada integrada em ambiente isolado, com preparação e limpeza previsíveis.
+3. Medir cobertura e duração da CI para escolher metas realistas; considerar Pint na CI se o custo de execução for aceitável.
+4. Definir a regra de estorno ou desperdício de ingredientes após cancelamento e cobri-la com testes.
 
-#### Testes E2E (Playwright)
-- **Entrada**: Backend e Frontend disponíveis em localhost/staging.
-- **Saída**: Todos os cenários de jornada do cliente passam sem flakiness (`0 retries`).
+### 12. Riscos da própria estratégia
 
-#### Critério de Release (Go/No-Go)
-- **Zero** defeitos de severidade P0 (bloqueantes) ou P1 (altos).
-- Fila de pedidos e fechamento de mesas validados de ponta a ponta.
+Testes com respostas simuladas podem passar mesmo quando o contrato real da API mudou. O teste integrado pode ser esquecido porque depende de configuração externa. Uma verificação axe sem teste manual pode deixar problemas de acessibilidade sem identificação. Revisar estes pontos após mudanças nas rotas, nos estados do pedido ou nas telas de operação.
 
----
+### 13. Histórico
 
-### 9. Quality Gates & Definition of Done (DoD)
-
-- **Gate de PR (Pull Request)**:
-  - Análise estática com Pint aprovada (`vendor/bin/pint --test`).
-  - Suíte PHPUnit verde (`php artisan test`).
-  - Build do Next.js aprovado (`npm run build`).
-  - Pelo menos 1 aprovação de code review.
-- **Gate de Deploy**:
-  - Bateria Playwright E2E executada com sucesso.
-  - Teste de isolamento de restaurante validado.
-
----
-
-### 10. Metrics & KPIs
-
-| Métrica | Definição | Alvo | Acompanhamento |
-| :--- | :--- | :--- | :--- |
-| **Taxa de Sucesso dos Testes** | Percentual de testes com resultado verde | 100% | Por PR |
-| **Taxa de Instabilidade (Flakiness Rate)** | Testes que falham de forma intermitente | < 1% | Semanal |
-| **Defect Escape Rate** | Bugs identificados em produção vs total | < 3% | Mensal |
-| **Tempo de Execução do Pipeline** | Duração completa da bateria no CI | < 8 min | Por PR |
-| **Cobertura de Fluxos Críticos** | Jornadas de venda e produção cobertas por E2E | 100% | Por Release |
-
----
-
-### 11. Timeline & Fases de Evolução
-
-- **Fase 1 (Atual - Concluída)**: Cobertura completa de Feature tests no Laravel e Setup do Playwright com Page Objects.
-- **Fase 2 (Próxima)**: Testes de estresse com volume de pedidos simultâneos no KDS e geração automática de relatórios visuais.
-
----
-
-### 12. Anti-Patterns Banidos
-
-1. 🚫 **`waitForTimeout()`**: Estritamente proibido esperar por tempo fixo. Todas as asserções devem usar auto-waiting (`expect(locator).toBeVisible()`).
-2. 🚫 **Seletores CSS / XPaths Frágeis**: Proibido usar classes geradas ou aninhamento profundo. Obrigatório uso de `getByRole`, `getByText`, `getByLabel` ou `getByTestId`.
-3. 🚫 **Testes que Dependem de Outros Testes**: Cada teste deve ser idempotente e autônomo.
-
----
-
-### 13. Revision History
-
-| Versão | Data | Autor | Descrição das Mudanças |
-| :--- | :--- | :--- | :--- |
-| **1.0** | 13/09/2026 | Equipe de Engenharia Elo | Criação inicial da estratégia de QA e arquitetura Playwright |
+| Data | Alteração |
+| --- | --- |
+| 13/09/2026 | Estratégia inicial. |
+| 30/09/2026 | Revisão para distinguir cobertura executada, teste integrado condicionado e próximos passos do protótipo. |
