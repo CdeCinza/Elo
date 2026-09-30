@@ -1,7 +1,7 @@
 'use client';
 
-import React from 'react';
-import { Plus } from 'lucide-react';
+import React, { useState } from 'react';
+import { Plus, RefreshCw } from 'lucide-react';
 import Link from 'next/link';
 
 interface FavoriteProduct {
@@ -46,7 +46,7 @@ const FAVORITES: FavoriteProduct[] = [
 interface HouseFavoritesProps {
   tableId: string | number;
   products?: FavoriteProduct[];
-  onAddToCart?: (product: FavoriteProduct) => void;
+  onAddToCart?: (product: FavoriteProduct) => Promise<void> | void;
 }
 
 export const HouseFavoritesSection: React.FC<HouseFavoritesProps> = ({
@@ -54,7 +54,18 @@ export const HouseFavoritesSection: React.FC<HouseFavoritesProps> = ({
   products,
   onAddToCart,
 }) => {
+  const [loadingId, setLoadingId] = useState<number | null>(null);
   const displayItems = products && products.length > 0 ? products : FAVORITES;
+
+  const handleAddToCart = async (item: FavoriteProduct) => {
+    if (loadingId !== null) return;
+    setLoadingId(item.id);
+    try {
+      await onAddToCart?.(item);
+    } finally {
+      setLoadingId(null);
+    }
+  };
 
   return (
     <section className="my-10">
@@ -103,12 +114,23 @@ export const HouseFavoritesSection: React.FC<HouseFavoritesProps> = ({
               </span>
 
               <button
-                onClick={() => onAddToCart?.(item)}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-medium transition-colors"
+                type="button"
+                onClick={() => handleAddToCart(item)}
+                disabled={loadingId !== null}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] disabled:opacity-60 text-white text-xs font-medium transition-all cursor-pointer disabled:cursor-not-allowed"
                 title="Adicionar ao pedido"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Pedir</span>
+                {loadingId === item.id ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Enviando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Pedir</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

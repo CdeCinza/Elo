@@ -746,40 +746,46 @@ export default function PosCounterPage() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
-                        {table.waiter_called && (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleClearWaiterCall(table.number);
-                            }}
-                            title="Clique para atender e dispensar chamado"
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse hover:bg-rose-600 hover:text-white transition-colors"
-                          >
-                            <Bell className="w-3 h-3" />
-                            Garçom!
-                          </button>
-                        )}
-                        <span
-                          className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                            isBill
-                              ? 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold'
-                              : isFree
-                              ? 'bg-stone-100 text-[#78716A]'
-                              : 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20 font-semibold'
-                          }`}
-                        >
-                          {isBill ? 'Pede conta' : isFree ? 'Livre' : 'Ocupada'}
-                        </span>
-                      </div>
+                      <span
+                        className={`text-[10px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap ${
+                          isBill
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold'
+                            : isFree
+                            ? 'bg-stone-100 text-[#78716A]'
+                            : 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20 font-semibold'
+                        }`}
+                      >
+                        {isBill ? 'Pede conta' : isFree ? 'Livre' : 'Ocupada'}
+                      </span>
                     </div>
+
+                    {/* Alerta de Garçom em Destaque */}
+                    {table.waiter_called && (
+                      <div className="mb-2">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleClearWaiterCall(table.number);
+                          }}
+                          title="Clique para atender e dispensar chamado"
+                          className="w-full text-[11px] font-bold py-1 px-2 rounded-lg bg-rose-50 text-rose-700 border border-rose-200 flex items-center justify-between animate-pulse hover:bg-rose-600 hover:text-white transition-colors cursor-pointer"
+                        >
+                          <span className="flex items-center gap-1.5">
+                            <Bell className="w-3 h-3 shrink-0" />
+                            <span>Garçom chamado!</span>
+                          </span>
+                          <span className="text-[10px] underline font-medium">Atender</span>
+                        </button>
+                      </div>
+                    )}
 
                     {/* Informações Centrais */}
                     {!isFree ? (
                       <div className="space-y-1 text-xs mt-3">
-                        <div className="flex items-center justify-between text-[#78716A]">
-                          <span>Garçom</span>
-                          <span className="text-[#191817] font-medium">{table.waiter}</span>
+                        <div className="flex items-center justify-between text-[#78716A] gap-2">
+                          <span className="shrink-0">Garçom</span>
+                          <span className="text-[#191817] font-medium truncate max-w-[140px]" title={table.waiter}>{table.waiter}</span>
                         </div>
                         <div className="flex items-center justify-between text-[#78716A]">
                           <span>Aberta às</span>

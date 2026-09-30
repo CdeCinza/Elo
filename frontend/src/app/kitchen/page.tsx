@@ -4,18 +4,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import {
-  ChefHat,
   Clock,
   CheckCircle2,
   Flame,
   Volume2,
   VolumeX,
   ArrowRight,
-  UtensilsCrossed,
-  Layers,
   AlertTriangle,
-  RotateCcw,
-  Check,
 } from 'lucide-react';
 
 interface KitchenOrderItem {
@@ -175,35 +170,6 @@ export default function KitchenKdsPage() {
     }
   };
 
-  const handleToggleItemCompleted = (orderId: number, itemId: number) => {
-    setOrders((prev) => {
-      const updated = prev.map((order) => {
-        if (order.id !== orderId) return order;
-        return {
-          ...order,
-          items: order.items.map((item) => {
-            if (item.id !== itemId) return item;
-            return { ...item, completed: !item.completed };
-          }),
-        };
-      });
-
-      if (typeof window !== 'undefined') {
-        try {
-          const completedIds: number[] = [];
-          updated.forEach((o) => {
-            o.items.forEach((i) => {
-              if (i.completed) completedIds.push(i.id);
-            });
-          });
-          localStorage.setItem('elo_kds_completed_items', JSON.stringify(completedIds));
-        } catch {}
-      }
-
-      return updated;
-    });
-  };
-
   const handleToggleGroupCompleted = (orderId: number, itemIds: number[], currentAllCompleted: boolean) => {
     const targetState = !currentAllCompleted;
     setOrders((prev) => {
@@ -216,32 +182,6 @@ export default function KitchenKdsPage() {
             if (!idSet.has(item.id)) return item;
             return { ...item, completed: targetState };
           }),
-        };
-      });
-
-      if (typeof window !== 'undefined') {
-        try {
-          const completedIds: number[] = [];
-          updated.forEach((o) => {
-            o.items.forEach((i) => {
-              if (i.completed) completedIds.push(i.id);
-            });
-          });
-          localStorage.setItem('elo_kds_completed_items', JSON.stringify(completedIds));
-        } catch {}
-      }
-
-      return updated;
-    });
-  };
-
-  const handleToggleAllItems = (orderId: number, shouldComplete: boolean) => {
-    setOrders((prev) => {
-      const updated = prev.map((order) => {
-        if (order.id !== orderId) return order;
-        return {
-          ...order,
-          items: order.items.map((item) => ({ ...item, completed: shouldComplete })),
         };
       });
 
@@ -400,8 +340,8 @@ export default function KitchenKdsPage() {
           </button>
         </div>
 
-        <div className="text-xs text-[#78716A] hidden sm:block">
-          Toque no prato para dar baixa em lote • Avanço com 1 clique
+        <div className="text-xs text-[#78716A] font-medium hidden sm:block">
+          ⚡ Toque no botão grande para avançar a comanda inteira • Riscar o item é 100% opcional
         </div>
       </div>
 
@@ -476,89 +416,92 @@ export default function KitchenKdsPage() {
 
             {pendingOrders.map((order) => {
               const grouped = groupOrderItems(order.items);
-              const allChecked = order.items.length > 0 && order.items.every((i) => i.completed);
 
               return (
                 <div
                   key={order.id}
-                  className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E0DBD3] space-y-3 shadow-2xs hover:border-[#C84E1F] transition-colors"
+                  className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#E0DBD3] space-y-3.5 shadow-2xs hover:border-[#C84E1F] transition-all"
                 >
+                  {/* Topo do Ticket: Mesa em destaque e Cronômetro */}
                   <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-base font-bold text-[#191817]">Mesa {order.tableNumber}</span>
-                      <span className="text-[11px] text-[#78716A] ml-2">#{order.id}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleAllItems(order.id, !allChecked)}
-                        className="text-[11px] text-[#78716A] hover:text-[#C84E1F] font-medium underline transition-colors cursor-pointer"
-                        title="Marcar ou desmarcar todos os itens deste pedido"
-                      >
-                        {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
-                      </button>
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          order.minutesAgo >= 15
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold'
-                            : 'bg-amber-50 text-amber-800 border border-amber-200'
-                        }`}
-                      >
-                        <Clock className="w-3.5 h-3.5" />
-                        {order.minutesAgo} min
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-lg font-black text-[#191817] tracking-tight">
+                        Mesa {order.tableNumber}
                       </span>
+                      <span className="text-xs font-mono text-[#78716A]">#{order.id}</span>
                     </div>
+
+                    <span
+                      className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                        order.minutesAgo >= 15
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300 font-extrabold animate-pulse'
+                          : 'bg-amber-100 text-amber-900 border border-amber-300'
+                      }`}
+                    >
+                      <Clock className="w-3.5 h-3.5" />
+                      <span>{order.minutesAgo} min</span>
+                    </span>
                   </div>
 
-                  {/* Lista de Itens Consolidados */}
-                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-xs">
+                  {/* Lista de Itens do Pedido (Limpo, Rápido, Sem Checkbox Pequena) */}
+                  <div className="space-y-1.5 border-t border-[#E0DBD3] pt-3">
                     {grouped.map((item) => (
                       <div
                         key={item.key}
-                        onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         role="checkbox"
                         aria-checked={item.allCompleted}
                         tabIndex={0}
+                        onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         onKeyDown={(e) => {
                           if (e.key === ' ' || e.key === 'Enter') {
                             e.preventDefault();
                             handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted);
                           }
                         }}
-                        className="cursor-pointer group select-none"
+                        className={`p-2 rounded-xl transition-all cursor-pointer select-none ${
+                          item.allCompleted
+                            ? 'opacity-40 bg-stone-200/50'
+                            : 'bg-white hover:bg-stone-50 border border-[#EAE6E1]'
+                        }`}
+                        title="Toque no item para riscar (opcional)"
                       >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`text-sm font-black px-2 py-0.5 rounded-lg shrink-0 ${
                               item.allCompleted
-                                ? 'bg-emerald-600 border-emerald-600 text-white'
-                                : 'border-[#D4CEC5] bg-white group-hover:border-[#C84E1F]'
+                                ? 'bg-stone-300 text-stone-600 line-through'
+                                : 'bg-[#C84E1F] text-white'
                             }`}
                           >
-                            {item.allCompleted && <Check className="w-3 h-3" />}
-                          </div>
-                          <span className={`font-medium ${item.allCompleted ? 'line-through text-[#6E6760]' : 'text-[#191817]'}`}>
-                            <strong className={item.allCompleted ? 'text-[#6E6760]' : 'text-[#C84E1F] font-bold'}>
-                              {item.totalQuantity}x
-                            </strong>{' '}
+                            {item.totalQuantity}x
+                          </span>
+                          <span
+                            className={`text-sm font-bold flex-1 leading-snug ${
+                              item.allCompleted ? 'line-through text-stone-500' : 'text-[#191817]'
+                            }`}
+                          >
                             {item.name}
                           </span>
                         </div>
                         {item.notes && (
-                          <p className="text-[11px] text-[#9E3712] pl-6 mt-0.5 font-medium">
-                            • {item.notes}
-                          </p>
+                          <div className="mt-1.5 pl-8">
+                            <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200">
+                              Obs: {item.notes}
+                            </span>
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
 
+                  {/* Ação Rápida de Avanço da Comanda (1 Toque Grande) */}
                   <button
+                    type="button"
                     onClick={() => handleAdvanceStatus(order.id)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-[#C84E1F] border border-[#E0DBD3] hover:border-[#C84E1F] text-[#191817] hover:text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#191817] hover:bg-stone-800 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-sm active:scale-[0.98]"
                   >
-                    <span>Iniciar preparo</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
+                    <span>▶ Iniciar Preparo</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               );
@@ -587,89 +530,92 @@ export default function KitchenKdsPage() {
 
             {preparingOrders.map((order) => {
               const grouped = groupOrderItems(order.items);
-              const allChecked = order.items.length > 0 && order.items.every((i) => i.completed);
 
               return (
                 <div
                   key={order.id}
-                  className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#C84E1F]/30 space-y-3 shadow-2xs hover:border-[#C84E1F] transition-colors"
+                  className="p-4 rounded-2xl bg-[#FAF8F5] border-2 border-[#C84E1F]/40 space-y-3.5 shadow-sm hover:border-[#C84E1F] transition-all"
                 >
+                  {/* Topo do Ticket: Mesa em destaque e Cronômetro */}
                   <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-base font-bold text-[#191817]">Mesa {order.tableNumber}</span>
-                      <span className="text-[11px] text-[#78716A] ml-2">#{order.id}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleToggleAllItems(order.id, !allChecked)}
-                        className="text-[11px] text-[#78716A] hover:text-[#C84E1F] font-medium underline transition-colors cursor-pointer"
-                        title="Marcar ou desmarcar todos os itens deste pedido"
-                      >
-                        {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
-                      </button>
-                      <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
-                          order.minutesAgo >= 20
-                            ? 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold'
-                            : 'bg-[#C84E1F]/15 text-[#C84E1F]'
-                        }`}
-                      >
-                        <Flame className="w-3.5 h-3.5" />
-                        {order.minutesAgo} min
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-lg font-black text-[#191817] tracking-tight">
+                        Mesa {order.tableNumber}
                       </span>
+                      <span className="text-xs font-mono text-[#78716A]">#{order.id}</span>
                     </div>
+
+                    <span
+                      className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1.5 ${
+                        order.minutesAgo >= 20
+                          ? 'bg-rose-100 text-rose-800 border border-rose-300 font-extrabold animate-pulse'
+                          : 'bg-[#C84E1F]/15 text-[#C84E1F] border border-[#C84E1F]/30'
+                      }`}
+                    >
+                      <Flame className="w-3.5 h-3.5" />
+                      <span>{order.minutesAgo} min</span>
+                    </span>
                   </div>
 
-                  {/* Lista de Itens Consolidados */}
-                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-xs">
+                  {/* Lista de Itens do Pedido */}
+                  <div className="space-y-1.5 border-t border-[#E0DBD3] pt-3">
                     {grouped.map((item) => (
                       <div
                         key={item.key}
-                        onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         role="checkbox"
                         aria-checked={item.allCompleted}
                         tabIndex={0}
+                        onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         onKeyDown={(e) => {
                           if (e.key === ' ' || e.key === 'Enter') {
                             e.preventDefault();
                             handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted);
                           }
                         }}
-                        className="cursor-pointer group select-none"
+                        className={`p-2 rounded-xl transition-all cursor-pointer select-none ${
+                          item.allCompleted
+                            ? 'opacity-40 bg-stone-200/50'
+                            : 'bg-white hover:bg-stone-50 border border-[#EAE6E1]'
+                        }`}
+                        title="Toque no item para riscar (opcional)"
                       >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-4 h-4 rounded flex items-center justify-center border transition-colors ${
+                        <div className="flex items-center gap-2.5">
+                          <span
+                            className={`text-sm font-black px-2 py-0.5 rounded-lg shrink-0 ${
                               item.allCompleted
-                                ? 'bg-emerald-600 border-emerald-600 text-white'
-                                : 'border-[#D4CEC5] bg-white group-hover:border-[#C84E1F]'
+                                ? 'bg-stone-300 text-stone-600 line-through'
+                                : 'bg-[#C84E1F] text-white'
                             }`}
                           >
-                            {item.allCompleted && <Check className="w-3 h-3" />}
-                          </div>
-                          <span className={`font-medium ${item.allCompleted ? 'line-through text-[#A8A199]' : 'text-[#191817]'}`}>
-                            <strong className={item.allCompleted ? 'text-[#A8A199]' : 'text-[#C84E1F] font-bold'}>
-                              {item.totalQuantity}x
-                            </strong>{' '}
+                            {item.totalQuantity}x
+                          </span>
+                          <span
+                            className={`text-sm font-bold flex-1 leading-snug ${
+                              item.allCompleted ? 'line-through text-stone-500' : 'text-[#191817]'
+                            }`}
+                          >
                             {item.name}
                           </span>
                         </div>
                         {item.notes && (
-                          <p className="text-[11px] text-[#C84E1F] pl-6 mt-0.5 font-medium">
-                            • {item.notes}
-                          </p>
+                          <div className="mt-1.5 pl-8">
+                            <span className="inline-block text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200">
+                              Obs: {item.notes}
+                            </span>
+                          </div>
                         )}
                       </div>
                     ))}
                   </div>
 
+                  {/* Ação Rápida: Concluir Pedido e Chamar Salão */}
                   <button
+                    type="button"
                     onClick={() => handleAdvanceStatus(order.id)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                    className="w-full py-3.5 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-[#C84E1F]/20 active:scale-[0.98]"
                   >
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                    <span>Concluir prato e chamar garçom</span>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>✓ Concluir Prato • Chamar Garçom</span>
                   </button>
                 </div>
               );
@@ -733,10 +679,11 @@ export default function KitchenKdsPage() {
                   </div>
 
                   <button
+                    type="button"
                     onClick={() => handleDismissOrder(order.id)}
-                    className="w-full py-2 px-3 rounded-xl bg-white border border-[#E0DBD3] hover:bg-stone-50 text-[#57534E] hover:text-[#191817] text-xs font-medium transition-colors cursor-pointer shadow-2xs"
+                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
                   >
-                    Entregue ao salão (baixar)
+                    <span>✓ Entregue ao Garçom (Baixar)</span>
                   </button>
                 </div>
               );

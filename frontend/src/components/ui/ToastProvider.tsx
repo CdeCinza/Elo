@@ -11,12 +11,14 @@ export interface ToastItem {
   title?: string;
   message: string;
   duration?: number;
+  count: number;
 }
 
 interface ToastContextValue {
   toasts: ToastItem[];
-  showToast: (toast: Omit<ToastItem, 'id'>) => string;
+  showToast: (toast: Omit<ToastItem, 'id' | 'count'>) => string;
   dismissToast: (id: string) => void;
+  dismissAll: () => void;
   success: (message: string, title?: string) => string;
   error: (message: string, title?: string) => string;
   warning: (message: string, title?: string) => string;
@@ -26,56 +28,111 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 // Standalone event target for dispatching toasts anywhere without needing React Context hooks
-type ToastListener = (toast: Omit<ToastItem, 'id'>) => void;
+type ToastListener = (toast: Omit<ToastItem, 'id' | 'count'>) => void;
 const listeners = new Set<ToastListener>();
 
 export const toast = {
   show: (type: ToastType, message: string, title?: string, duration?: number) => {
     listeners.forEach((listener) => listener({ type, message, title, duration }));
   },
-  success: (titleOrMessage: string, description?: string, duration = 4000) => {
+  success: (titleOrMessage: string, description?: string, duration = 3200) => {
     const title = description ? titleOrMessage : undefined;
     const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'success', message, title, duration }));
   },
-  error: (titleOrMessage: string, description?: string, duration = 5000) => {
+  error: (titleOrMessage: string, description?: string, duration = 4500) => {
     const title = description ? titleOrMessage : undefined;
     const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'error', message, title, duration }));
   },
-  warning: (titleOrMessage: string, description?: string, duration = 4500) => {
+  warning: (titleOrMessage: string, description?: string, duration = 4000) => {
     const title = description ? titleOrMessage : undefined;
     const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'warning', message, title, duration }));
   },
-  info: (titleOrMessage: string, description?: string, duration = 4000) => {
+  info: (titleOrMessage: string, description?: string, duration = 3200) => {
     const title = description ? titleOrMessage : undefined;
     const message = description || titleOrMessage;
     listeners.forEach((listener) => listener({ type: 'info', message, title, duration }));
   },
 };
 
+const MAX_TOASTS = 3;
+
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const timersRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const dismissToast = useCallback((id: string) => {
+    if (timersRef.current.has(id)) {
+      clearTimeout(timersRef.current.get(id));
+      timersRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  const dismissAll = useCallback(() => {
+    timersRef.current.forEach((timer) => clearTimeout(timer));
+    timersRef.current.clear();
+    setToasts([]);
+  }, []);
+
   const showToast = useCallback(
-    ({ type, title, message, duration = 4000 }: Omit<ToastItem, 'id'>) => {
-      const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-      const newToast: ToastItem = { id, type, title, message, duration };
+    ({ type, title, message, duration = 3200 }: Omit<ToastItem, 'id' | 'count'>) => {
+      let activeId = '';
 
-      setToasts((prev) => [...prev, newToast]);
+      setToasts((prev) => {
+        // 1. Verifica se já existe um toast idêntico
+        const existing = prev.find(
+          (t) => t.type === type && t.message === message && t.title === title
+        );
 
-      if (duration > 0) {
-        setTimeout(() => {
-          dismissToast(id);
-        }, duration);
-      }
+        if (existing) {
+          activeId = existing.id;
+          if (timersRef.current.has(existing.id)) {
+            clearTimeout(timersRef.current.get(existing.id));
+          }
 
-      return id;
+          if (duration > 0) {
+            const timer = setTimeout(() => {
+              dismissToast(existing.id);
+            }, duration);
+            timersRef.current.set(existing.id, timer);
+          }
+
+          return prev.map((t) =>
+            t.id === existing.id ? { ...t, count: t.count + 1, duration } : t
+          );
+        }
+
+        // 2. Novo toast
+        const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        activeId = id;
+        const newToast: ToastItem = { id, type, title, message, duration, count: 1 };
+
+        const next = [...prev, newToast];
+        if (next.length > MAX_TOASTS) {
+          const overflow = next.slice(0, next.length - MAX_TOASTS);
+          overflow.forEach((item) => {
+            if (timersRef.current.has(item.id)) {
+              clearTimeout(timersRef.current.get(item.id));
+              timersRef.current.delete(item.id);
+            }
+          });
+          return next.slice(-MAX_TOASTS);
+        }
+
+        if (duration > 0) {
+          const timer = setTimeout(() => {
+            dismissToast(id);
+          }, duration);
+          timersRef.current.set(id, timer);
+        }
+
+        return next;
+      });
+
+      return activeId;
     },
     [dismissToast]
   );
@@ -91,12 +148,12 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, [showToast]);
 
   const success = useCallback((msg: string, title?: string) => showToast({ type: 'success', message: msg, title }), [showToast]);
-  const error = useCallback((msg: string, title?: string) => showToast({ type: 'error', message: msg, title, duration: 5000 }), [showToast]);
+  const error = useCallback((msg: string, title?: string) => showToast({ type: 'error', message: msg, title, duration: 4500 }), [showToast]);
   const warning = useCallback((msg: string, title?: string) => showToast({ type: 'warning', message: msg, title }), [showToast]);
   const info = useCallback((msg: string, title?: string) => showToast({ type: 'info', message: msg, title }), [showToast]);
 
   return (
-    <ToastContext.Provider value={{ toasts, showToast, dismissToast, success, error, warning, info }}>
+    <ToastContext.Provider value={{ toasts, showToast, dismissToast, dismissAll, success, error, warning, info }}>
       {children}
       
       {/* Toast Container */}
@@ -112,6 +169,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               bg: 'bg-[#181F1A]',
               accent: 'bg-emerald-500',
               titleColor: 'text-emerald-300',
+              badgeBg: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
             },
             error: {
               icon: <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />,
@@ -119,6 +177,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               bg: 'bg-[#221818]',
               accent: 'bg-rose-500',
               titleColor: 'text-rose-300',
+              badgeBg: 'bg-rose-500/20 text-rose-300 border-rose-500/30',
             },
             warning: {
               icon: <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />,
@@ -126,6 +185,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               bg: 'bg-[#241E15]',
               accent: 'bg-amber-500',
               titleColor: 'text-amber-300',
+              badgeBg: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
             },
             info: {
               icon: <Info className="w-5 h-5 text-[#C84E1F] shrink-0" />,
@@ -133,6 +193,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               bg: 'bg-[#1C1816]',
               accent: 'bg-[#C84E1F]',
               titleColor: 'text-[#F9F8F6]',
+              badgeBg: 'bg-[#C84E1F]/20 text-[#F9F8F6] border-[#C84E1F]/30',
             },
           }[item.type];
 
@@ -140,15 +201,26 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
             <div
               key={item.id}
               role="alert"
-              className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl border ${typeConfig.border} ${typeConfig.bg} shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in slide-in-from-top-4`}
+              className={`pointer-events-auto flex items-start gap-3 p-3.5 sm:p-4 rounded-xl border ${typeConfig.border} ${typeConfig.bg} shadow-2xl backdrop-blur-md transition-all duration-300 animate-in fade-in slide-in-from-top-3`}
             >
               {typeConfig.icon}
               <div className="flex-1 min-w-0 pr-1">
-                {item.title && (
-                  <h4 className={`text-xs font-bold ${typeConfig.titleColor} mb-0.5 tracking-tight`}>
-                    {item.title}
-                  </h4>
-                )}
+                <div className="flex items-center gap-2 mb-0.5">
+                  {item.title && (
+                    <h4 className={`text-xs font-bold ${typeConfig.titleColor} tracking-tight`}>
+                      {item.title}
+                    </h4>
+                  )}
+                  {item.count > 1 && (
+                    <span
+                      key={item.count}
+                      className={`inline-flex items-center px-1.5 py-0.2 rounded-md text-[10px] font-mono font-bold border ${typeConfig.badgeBg} animate-in zoom-in-90 duration-150`}
+                      title={`${item.count} notificações idênticas`}
+                    >
+                      ×{item.count}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-[#E8E4DF] leading-relaxed break-words font-medium">
                   {item.message}
                 </p>

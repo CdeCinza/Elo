@@ -46,8 +46,6 @@ class CustomerSessionController extends Controller
     private function findTable(string $tableNumber, ?int $restaurantId = null): RestaurantTable
     {
         $cleanNumber = preg_replace('/[^0-9]/', '', $tableNumber);
-        $intNumber = (int) $cleanNumber;
-        $formattedTwoDigits = sprintf('%02d', $intNumber);
 
         $restId = $restaurantId;
         if (! $restId) {
@@ -60,23 +58,33 @@ class CustomerSessionController extends Controller
         }
 
         $query = RestaurantTable::where('restaurant_id', $restId)
-            ->where(function ($q) use ($tableNumber, $cleanNumber, $formattedTwoDigits, $intNumber) {
-                $q->where('number', $tableNumber)
-                    ->orWhere('number', "Mesa {$cleanNumber}")
-                    ->orWhere('number', "Mesa {$formattedTwoDigits}")
-                    ->orWhere('number', "Mesa {$intNumber}")
-                    ->orWhere('number', (string) $intNumber)
-                    ->orWhere('number', $formattedTwoDigits)
-                    ->orWhere('id', $tableNumber);
+            ->where(function ($q) use ($tableNumber, $cleanNumber) {
+                $q->where('number', $tableNumber);
+                if ($cleanNumber !== '') {
+                    $intNumber = (int) $cleanNumber;
+                    $formattedTwoDigits = sprintf('%02d', $intNumber);
+                    $q->orWhere('number', "Mesa {$cleanNumber}")
+                        ->orWhere('number', "Mesa {$formattedTwoDigits}")
+                        ->orWhere('number', "Mesa {$intNumber}")
+                        ->orWhere('number', (string) $intNumber)
+                        ->orWhere('number', $formattedTwoDigits);
+                }
             });
 
         $table = $query->first();
 
+        if (! $table && is_numeric($tableNumber)) {
+            $table = RestaurantTable::where('restaurant_id', $restId)
+                ->where('id', (int) $tableNumber)
+                ->first();
+        }
+
         if (! $table) {
+            $tableName = $cleanNumber !== '' ? 'Mesa '.(int) $cleanNumber : $tableNumber;
             $table = RestaurantTable::firstOrCreate(
                 [
                     'restaurant_id' => $restId,
-                    'number' => "Mesa {$intNumber}",
+                    'number' => $tableName,
                 ],
                 ['capacity' => 4, 'status' => 'free']
             );
