@@ -53,11 +53,14 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
   // Cálculos financeiros em centavos, com a mesma regra de arredondamento do backend
   const subtotalCents = Math.round(Number(activeOrder?.subtotal || items.reduce((acc, item) => acc + item.unit_price * item.quantity, 0)) * 100);
   const serviceFeeCents = includeService ? Math.round(subtotalCents * 0.1) : 0;
+  const orderTotalCents = Math.round(Number(activeOrder?.total ?? subtotalCents / 100) * 100);
+  const adjustment = (orderTotalCents - subtotalCents) / 100;
   const subtotal = subtotalCents / 100;
   const serviceFee = serviceFeeCents / 100;
-  const total = (subtotalCents + serviceFeeCents) / 100;
+  const totalCents = Math.max(orderTotalCents + serviceFeeCents, 0);
+  const total = totalCents / 100;
   // Arredonda para cima: a soma das partes nunca fica abaixo do total
-  const totalPerPerson = Math.ceil((subtotalCents + serviceFeeCents) / splitCount) / 100;
+  const totalPerPerson = Math.ceil(totalCents / splitCount) / 100;
 
   const kitchenSummary =
     items.length === 0
@@ -244,6 +247,13 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
                 <span>Subtotal dos itens</span>
                 <span>{formatBRL(subtotal)}</span>
               </div>
+
+              {adjustment !== 0 && (
+                <div className="flex justify-between text-[#6E6760]">
+                  <span>Taxas e descontos da comanda</span>
+                  <span>{formatBRL(adjustment)}</span>
+                </div>
+              )}
 
               <div className="flex justify-between items-center text-[#6E6760]">
                 <label className="flex items-center gap-2 cursor-pointer">

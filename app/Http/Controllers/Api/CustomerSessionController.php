@@ -127,7 +127,7 @@ class CustomerSessionController extends Controller
                 $newSubtotal = (float) $order->items()->sum('subtotal');
                 $order->update([
                     'subtotal' => $newSubtotal,
-                    'total' => $newSubtotal,
+                    'total' => max(round($newSubtotal + (float) $order->delivery_fee - (float) $order->discount, 2), 0.00),
                 ]);
                 $this->kitchenFlow->syncOrderStatus($order);
 

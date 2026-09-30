@@ -131,7 +131,7 @@ class OrderApiTest extends TestCase
             ->assertJson(['message' => "Transição de status inválida: de 'confirmed' para 'delivered'."]);
     }
 
-    public function test_delivering_order_frees_the_table(): void
+    public function test_delivering_an_unpaid_order_keeps_the_table_occupied(): void
     {
         $order = Order::factory()->create([
             'table_id' => $this->table->id,
@@ -146,7 +146,7 @@ class OrderApiTest extends TestCase
         $response->assertStatus(200)
             ->assertJsonPath('order.status', 'delivered');
 
-        $this->assertDatabaseHas('restaurant_tables', ['id' => $this->table->id, 'status' => 'free']);
+        $this->assertDatabaseHas('restaurant_tables', ['id' => $this->table->id, 'status' => 'occupied']);
     }
 
     public function test_order_listing_tolerates_invalid_per_page(): void
@@ -155,6 +155,14 @@ class OrderApiTest extends TestCase
             ->getJson('/api/v1/orders?per_page=abc')
             ->assertOk()
             ->assertJsonPath('meta.per_page', 15);
+    }
+
+    public function test_nullable_order_fees_default_to_zero(): void
+    {
+        $this->actingAs($this->waiter, 'sanctum')->postJson('/api/v1/orders', [
+            'type' => 'takeout', 'discount' => null, 'delivery_fee' => null,
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('order.total', 30);
     }
 
     public function test_order_with_absurd_quantity_is_a_validation_error(): void

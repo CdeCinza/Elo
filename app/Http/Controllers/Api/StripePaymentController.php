@@ -68,7 +68,7 @@ class StripePaymentController extends Controller
         $subtotal = (float) $order->items()->sum('subtotal');
         $includeService = $validated['include_service'] ?? false;
         $serviceFee = $includeService ? round($subtotal * 0.10, 2) : 0.00;
-        $totalAmount = round($subtotal + $serviceFee, 2);
+        $totalAmount = max(round($subtotal + (float) $order->delivery_fee - (float) $order->discount + $serviceFee, 2), 0.00);
 
         if ($totalAmount <= 0) {
             return response()->json([
@@ -276,14 +276,11 @@ class StripePaymentController extends Controller
 
     private function matchesOrderAmount(Order $order, array $intent, float $paidAmount): bool
     {
-        if (! isset($intent['metadata']['service_fee'])) {
-            return true;
-        }
-
         $subtotal = (float) $order->items()->sum('subtotal');
-        $serviceFee = (float) $intent['metadata']['service_fee'];
+        $serviceFee = (float) ($intent['metadata']['service_fee'] ?? 0);
 
-        return round($subtotal + $serviceFee, 2) === $paidAmount;
+        return $serviceFee >= 0
+            && max(round($subtotal + (float) $order->delivery_fee - (float) $order->discount + $serviceFee, 2), 0.00) === $paidAmount;
     }
 
     private function tableServingOrder(?RestaurantTable $table, Order $order): ?RestaurantTable

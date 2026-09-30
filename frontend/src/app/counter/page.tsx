@@ -491,9 +491,11 @@ export default function PosCounterPage() {
     return true;
   });
 
-  const subtotal = selectedTable?.total || 0;
+  const subtotal = selectedTable?.subtotal ?? selectedTable?.total ?? 0;
+  const orderTotal = selectedTable?.total ?? subtotal;
+  const adjustment = Math.round((orderTotal - subtotal) * 100) / 100;
   const serviceFee = includeService ? Math.round(subtotal * 10) / 100 : 0;
-  const grandTotal = subtotal + serviceFee;
+  const grandTotal = Math.max(Math.round((orderTotal + serviceFee) * 100) / 100, 0);
 
   return (
     <>
@@ -1105,6 +1107,13 @@ export default function PosCounterPage() {
                       <span>{formatBRL(subtotal)}</span>
                     </div>
 
+                    {adjustment !== 0 && (
+                      <div className="flex justify-between text-[#78716A]">
+                        <span>Taxas e descontos da comanda</span>
+                        <span>{formatBRL(adjustment)}</span>
+                      </div>
+                    )}
+
                     <div className="flex justify-between items-center text-[#78716A]">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
@@ -1687,6 +1696,9 @@ export default function PosCounterPage() {
           ))}
           <hr className="border-dashed border-black my-2" />
           <div className="flex justify-between"><span>Subtotal</span><span>{formatBRL(subtotal)}</span></div>
+          {adjustment !== 0 && (
+            <div className="flex justify-between"><span>Taxas e descontos</span><span>{formatBRL(adjustment)}</span></div>
+          )}
           {includeService && (
             <div className="flex justify-between"><span>Serviço (10%)</span><span>{formatBRL(serviceFee)}</span></div>
           )}

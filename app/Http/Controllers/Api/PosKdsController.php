@@ -281,7 +281,7 @@ class PosKdsController extends Controller
             $newSubtotal = (float) $order->items()->sum('subtotal');
             $order->update([
                 'subtotal' => $newSubtotal,
-                'total' => $newSubtotal,
+                'total' => max(round($newSubtotal + (float) $order->delivery_fee - (float) $order->discount, 2), 0.00),
             ]);
             $this->kitchenFlow->syncOrderStatus($order);
 
@@ -310,36 +310,37 @@ class PosKdsController extends Controller
 
         $restId = $this->resolveRestaurantId($request);
         $table = $this->findTableByNumber($tableNumber, $restId);
-        $activeOrder = $table->activeOrder;
 
-        $subtotal = $activeOrder ? (float) $activeOrder->items()->sum('subtotal') : 0.0;
+        DB::transaction(function () use ($table, $validated, $restId): void {
+            $lockedTable = RestaurantTable::whereKey($table->id)->lockForUpdate()->firstOrFail();
+            $activeOrder = $lockedTable->activeOrder()->lockForUpdate()->first();
+            $subtotal = $activeOrder ? (float) $activeOrder->items()->sum('subtotal') : 0.0;
 
-        if ($activeOrder && $subtotal <= 0) {
-            // Comanda aberta sem consumo: libera a mesa sem registrar pagamento
-            $activeOrder->update(['status' => 'canceled']);
-        } elseif ($activeOrder) {
-            $paymentMethod = $validated['payment_method'];
-            $serviceFee = ($validated['include_service'] ?? false) ? round($subtotal * 0.10, 2) : 0.00;
+            if ($activeOrder && $subtotal <= 0) {
+                $activeOrder->update(['status' => 'canceled']);
+            } elseif ($activeOrder) {
+                $serviceFee = ($validated['include_service'] ?? false) ? round($subtotal * 0.10, 2) : 0.00;
 
-            Payment::create([
-                'order_id' => $activeOrder->id,
-                'transaction_id' => 'POS-'.strtoupper(uniqid()),
-                'method' => $paymentMethod,
-                'status' => 'paid',
-                'amount' => round($subtotal + $serviceFee, 2),
-                'paid_at' => now(),
-            ]);
+                Payment::create([
+                    'order_id' => $activeOrder->id,
+                    'transaction_id' => 'POS-'.strtoupper(uniqid()),
+                    'method' => $validated['payment_method'],
+                    'status' => 'paid',
+                    'amount' => max(round($subtotal + (float) $activeOrder->delivery_fee - (float) $activeOrder->discount + $serviceFee, 2), 0.00),
+                    'paid_at' => now(),
+                ]);
 
-            $activeOrder->update(['status' => 'delivered']);
-        }
+                $activeOrder->update(['status' => 'delivered']);
+            }
 
-        $table->update(['status' => 'free']);
+            $lockedTable->update(['status' => 'free']);
 
-        // Limpa registros de garçom chamado desta mesa
-        ActivityLog::where('restaurant_id', $restId)
-            ->where('action', 'waiter_called')
-            ->where('subject_id', $table->id)
-            ->delete();
+            ActivityLog::where('restaurant_id', $restId)
+                ->where('action', 'waiter_called')
+                ->where('subject_type', RestaurantTable::class)
+                ->where('subject_id', $lockedTable->id)
+                ->delete();
+        });
 
         return response()->json([
             'message' => "Mesa {$this->normalizeNumber($table->number)} finalizada e liberada com sucesso!",

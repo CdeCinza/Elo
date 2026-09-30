@@ -1,5 +1,38 @@
 import { test, expect } from '@playwright/test';
 
+test('conta do tablet respeita desconto e taxa da comanda', async ({ page }) => {
+  await page.route('**/api/v1/categories*', (route) => route.fulfill({ json: { data: [] } }));
+  await page.route('**/api/v1/products*', (route) => route.fulfill({ json: { data: [] } }));
+  await page.route('**/api/v1/customer/table/01', (route) => route.fulfill({ json: {
+    table: { id: 1, number: '01', status: 'occupied', active_order: {
+      id: 1, status: 'delivered', subtotal: 100, total: 85, discount: 20, delivery_fee: 5,
+      items: [{ id: 1, product_id: 1, product_name: 'Prato', quantity: 2, unit_price: 50, subtotal: 100, status: 'delivered' }],
+    } },
+  } }));
+
+  await page.goto('/table/01/order');
+  await expect(page.getByRole('button', { name: /Pedir conta.*95,00/ })).toBeVisible();
+  await page.getByRole('checkbox', { name: /serviço/i }).uncheck();
+  await expect(page.getByRole('button', { name: /Pedir conta.*85,00/ })).toBeVisible();
+});
+
+test('caixa calcula serviço sobre os itens e mantém o desconto', async ({ page }) => {
+  await page.route('**/api/v1/products*', (route) => route.fulfill({ json: { data: [] } }));
+  await page.route('**/api/v1/pos/tables', (route) => route.fulfill({ json: { tables: [{
+    id: 1, number: '01', status: 'occupied', subtotal: 100, total: 85,
+    items: [{ id: 1, name: 'Prato', quantity: 2, price: 50, subtotal: 100, status: 'delivered' }],
+  }] } }));
+
+  await page.goto('/counter');
+  await page.getByRole('button', { name: /^Mesa 01,/ }).click();
+  const serviceCheckbox = page.getByRole('checkbox', { name: /Serviço garçom/ });
+  await serviceCheckbox.check();
+  await expect(page.getByText(/95,00/).first()).toBeVisible();
+  await expect(page.getByText('Taxas e descontos da comanda')).toBeVisible();
+  await serviceCheckbox.uncheck();
+  await expect(page.getByText(/95,00/)).toHaveCount(0);
+});
+
 test('página inicial explica o fluxo e os requisitos de acesso @smoke', async ({ page }) => {
   await page.route('**/api/v1/categories', (route) => route.fulfill({ json: { data: [] } }));
   await page.goto('/');

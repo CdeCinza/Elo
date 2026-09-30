@@ -12,6 +12,7 @@ use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class PosKdsApiTest extends TestCase
@@ -72,6 +73,27 @@ class PosKdsApiTest extends TestCase
             ->assertJsonPath('table.status', 'occupied');
 
         $this->assertEquals('occupied', $this->table->fresh()->status);
+    }
+
+    public function test_customer_and_pos_additions_preserve_order_discount_and_delivery_fee(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+        $order = Order::firstOrFail();
+        $order->update(['discount' => 10, 'delivery_fee' => 5, 'total' => 31.90]);
+
+        $this->postJson('/api/v1/customer/table/01/order', [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('order.total', 68.8);
+
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+
+        $this->assertEquals(105.70, (float) $order->fresh()->total);
+        $this->postJson('/api/v1/pos/tables/01/close', ['payment_method' => 'cash'])->assertOk();
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'amount' => 105.70]);
     }
 
     public function test_customer_can_call_waiter_and_request_bill(): void
@@ -397,6 +419,31 @@ class PosKdsApiTest extends TestCase
         $this->assertDatabaseCount('payments', 0);
         $this->assertEquals('free', $this->table->fresh()->status);
         $this->assertDatabaseHas('orders', ['table_id' => $this->table->id, 'status' => 'canceled']);
+    }
+
+    public function test_failed_closing_rolls_back_payment_and_keeps_table_open(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+
+        $eventName = 'eloquent.updating: '.Order::class;
+        Event::listen($eventName, function (Order $order): void {
+            if ($order->status === 'delivered') {
+                throw new \RuntimeException('Falha ao fechar o pedido.');
+            }
+        });
+
+        try {
+            $this->postJson('/api/v1/pos/tables/01/close', ['payment_method' => 'cash'])
+                ->assertStatus(500);
+        } finally {
+            Event::forget($eventName);
+        }
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertEquals('occupied', $this->table->fresh()->status);
+        $this->assertDatabaseHas('orders', ['table_id' => $this->table->id, 'status' => 'pending']);
     }
 
     public function test_pos_can_close_table_with_payment(): void

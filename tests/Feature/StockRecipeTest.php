@@ -125,4 +125,34 @@ class StockRecipeTest extends TestCase
         $response->assertStatus(422)
             ->assertJsonPath('message', "Estoque insuficiente do insumo 'Pão de Hambúrguer'. Necessário: 1unidade, disponível: 0unidade.");
     }
+
+    public function test_order_creation_checks_combined_stock_for_all_lines(): void
+    {
+        $this->bun->update(['stock_qty' => 1]);
+
+        $this->actingAs($this->waiter, 'sanctum')->postJson('/api/v1/orders', [
+            'type' => 'takeout',
+            'items' => [
+                ['product_id' => $this->burger->id, 'quantity' => 1],
+                ['product_id' => $this->burger->id, 'quantity' => 1],
+            ],
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('orders', 0);
+        $this->assertDatabaseCount('order_items', 0);
+    }
+
+    public function test_decimal_stock_equal_to_combined_consumption_is_available(): void
+    {
+        $this->meat->update(['stock_qty' => 0.300]);
+        $this->burger->ingredients()->updateExistingPivot($this->meat->id, ['qty_used' => 0.100]);
+
+        $this->actingAs($this->waiter, 'sanctum')->postJson('/api/v1/orders', [
+            'type' => 'takeout',
+            'items' => [
+                ['product_id' => $this->burger->id, 'quantity' => 1],
+                ['product_id' => $this->burger->id, 'quantity' => 2],
+            ],
+        ])->assertCreated();
+    }
 }
