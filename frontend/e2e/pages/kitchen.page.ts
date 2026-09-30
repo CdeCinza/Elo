@@ -32,7 +32,7 @@ export class KitchenPage {
 
   async advanceOrderForTable(tableNumber: string) {
     const card = this.page.locator('div').filter({ hasText: new RegExp(`Mesa ${tableNumber}`, 'i') }).first();
-    const advanceButton = card.getByRole('button', { name: /Iniciar preparo|Pronto para entrega/i }).first();
+    const advanceButton = card.getByRole('button', { name: /Iniciar preparo|Concluir Prato|Pronto/i }).first();
     if (await advanceButton.isVisible()) {
       await advanceButton.click();
     }
