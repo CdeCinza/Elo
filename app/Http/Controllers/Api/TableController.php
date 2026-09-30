@@ -14,6 +14,7 @@ use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class TableController extends Controller
 {
@@ -94,23 +95,33 @@ class TableController extends Controller
 
     public function openTab(OpenTabRequest $request, RestaurantTable $table): JsonResponse
     {
-        if ($table->status === 'occupied' || $table->activeOrder()->exists()) {
+        $order = DB::transaction(function () use ($request, $table): ?Order {
+            $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+
+            if ($lockedTable->status === 'occupied' || $lockedTable->activeOrder()->exists()) {
+                return null;
+            }
+
+            $order = Order::create([
+                'restaurant_id' => $lockedTable->restaurant_id,
+                'table_id' => $lockedTable->id,
+                'user_id' => $request->user()->id,
+                'type' => 'dine_in',
+                'status' => 'pending',
+                'subtotal' => 0.00,
+                'total' => 0.00,
+            ]);
+
+            $lockedTable->update(['status' => 'occupied']);
+
+            return $order;
+        });
+
+        if ($order === null) {
             return response()->json([
                 'message' => 'Esta mesa já possui uma comanda/pedido em andamento.',
             ], 422);
         }
-
-        $order = Order::create([
-            'restaurant_id' => $table->restaurant_id,
-            'table_id' => $table->id,
-            'user_id' => $request->user()->id,
-            'type' => 'dine_in',
-            'status' => 'pending',
-            'subtotal' => 0.00,
-            'total' => 0.00,
-        ]);
-
-        $table->update(['status' => 'occupied']);
 
         return response()->json([
             'message' => 'Comanda aberta com sucesso para a '.$table->number,

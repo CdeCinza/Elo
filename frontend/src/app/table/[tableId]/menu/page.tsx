@@ -7,6 +7,7 @@ import { Search, Plus, ArrowLeft, Check, ShoppingBag } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
 import Link from 'next/link';
 import { toast } from '@/components/ui/ToastProvider';
+import { ProductImage } from '@/components/ui/ProductImage';
 
 import { useCustomerSession, type Product as ApiProduct } from '@/hooks/useCustomerSession';
 
@@ -220,10 +221,9 @@ export default function MenuPage() {
               </div>
 
               <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-[#EAE6E1]">
-                <img
+                <ProductImage
                   src={product.image_url || 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80'}
                   alt={product.name}
-                  className="w-full h-full object-cover"
                 />
                 <span
                   className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white flex items-center justify-center transition-colors shadow-sm"

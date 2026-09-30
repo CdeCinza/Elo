@@ -11,7 +11,6 @@ import {
   ChefHat,
   Eye,
   EyeOff,
-  ImageOff,
   LayoutGrid,
   LogOut,
   Package,
@@ -32,6 +31,7 @@ import { CatalogModal, primaryButtonClass, secondaryButtonClass } from '@/compon
 import { ProductFormModal } from '@/components/catalog/ProductFormModal';
 import { CategoryFormModal } from '@/components/catalog/CategoryFormModal';
 import { IngredientFormModal } from '@/components/catalog/IngredientFormModal';
+import { ProductImage } from '@/components/ui/ProductImage';
 
 type CatalogTab = 'products' | 'categories' | 'ingredients';
 
@@ -429,11 +429,7 @@ export default function MenuManagementPage() {
                           }`}
                         >
                           <div className="w-20 h-20 rounded-xl overflow-hidden border border-[#EAE6E1] bg-[#FAF8F5] shrink-0 flex items-center justify-center">
-                            {product.image_url ? (
-                              <img src={product.image_url} alt={product.name} className={`w-full h-full object-cover ${product.available ? '' : 'grayscale opacity-60'}`} />
-                            ) : (
-                              <ImageOff className="w-5 h-5 text-[#A8A199]" />
-                            )}
+                            <ProductImage src={product.image_url} alt={product.name} className={`w-full h-full object-cover ${product.available ? '' : 'grayscale opacity-60'}`} />
                           </div>
                           <div className="flex-1 min-w-0 flex flex-col justify-between">
                             <div>

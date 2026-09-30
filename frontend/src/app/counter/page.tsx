@@ -203,6 +203,16 @@ export default function PosCounterPage() {
   }, []);
 
   useEffect(() => {
+    let pollInFlight = false;
+
+    const pollTables = () => {
+      if (document.hidden || posAccess.denied || pollInFlight) return;
+      pollInFlight = true;
+      void fetchTables(true).finally(() => {
+        pollInFlight = false;
+      });
+    };
+
     const initialLoad = setTimeout(() => {
       const user = getAuthUser();
       const rest = getActiveRestaurant();
@@ -214,18 +224,26 @@ export default function PosCounterPage() {
         setActiveRestaurantState(rest);
       }
 
-      void fetchTables();
+      pollInFlight = true;
+      void fetchTables().finally(() => {
+        pollInFlight = false;
+      });
       void fetchProducts();
     }, 0);
 
     // Polling a cada 3,5 segundos
-    const interval = setInterval(() => {
-      if (!posAccess.denied) fetchTables(true);
-    }, 3500);
+    const interval = setInterval(pollTables, 3500);
+
+    const handleVisibilityChange = () => {
+      pollTables();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialLoad);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchTables, fetchProducts]);
 

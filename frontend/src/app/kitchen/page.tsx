@@ -185,18 +185,36 @@ export default function KitchenKdsPage() {
   }, []);
 
   useEffect(() => {
+    let pollInFlight = false;
+
+    const pollOrders = () => {
+      if (document.hidden || accessDeniedRef.current || pollInFlight) return;
+      pollInFlight = true;
+      void fetchOrders(true).finally(() => {
+        pollInFlight = false;
+      });
+    };
+
     const initialFetch = setTimeout(() => {
-      void fetchOrders();
+      pollInFlight = true;
+      void fetchOrders().finally(() => {
+        pollInFlight = false;
+      });
     }, 0);
 
     // Polling a cada 4 segundos para novos pedidos caírem na hora
-    const interval = setInterval(() => {
-      if (!accessDeniedRef.current) fetchOrders(true);
-    }, 4000);
+    const interval = setInterval(pollOrders, 4000);
+
+    const handleVisibilityChange = () => {
+      pollOrders();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialFetch);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchOrders]);
 

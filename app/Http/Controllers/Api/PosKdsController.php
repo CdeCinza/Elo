@@ -201,19 +201,25 @@ class PosKdsController extends Controller
     {
         $restId = $this->resolveRestaurantId($request);
         $table = $this->findTableByNumber($tableNumber, $restId);
-        $table->update(['status' => 'occupied']);
 
-        if (! $table->activeOrder) {
-            Order::create([
-                'restaurant_id' => $restId,
-                'table_id' => $table->id,
-                'user_id' => $request->user()->id,
-                'type' => 'dine_in',
-                'status' => 'pending',
-                'subtotal' => 0.00,
-                'total' => 0.00,
-            ]);
-        }
+        $table = DB::transaction(function () use ($request, $restId, $table) {
+            $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+            $lockedTable->update(['status' => 'occupied']);
+
+            if (! $lockedTable->activeOrder) {
+                Order::create([
+                    'restaurant_id' => $restId,
+                    'table_id' => $lockedTable->id,
+                    'user_id' => $request->user()->id,
+                    'type' => 'dine_in',
+                    'status' => 'pending',
+                    'subtotal' => 0.00,
+                    'total' => 0.00,
+                ]);
+            }
+
+            return $lockedTable;
+        });
 
         return response()->json([
             'message' => "Mesa {$this->normalizeNumber($table->number)} aberta com sucesso.",
@@ -251,9 +257,11 @@ class PosKdsController extends Controller
         }
 
         $order = DB::transaction(function () use ($request, $restId, $table, $product, $quantity) {
-            $order = $table->activeOrder ?? Order::create([
+            $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+
+            $order = $lockedTable->activeOrder ?? Order::create([
                 'restaurant_id' => $restId,
-                'table_id' => $table->id,
+                'table_id' => $lockedTable->id,
                 'user_id' => $request->user()->id,
                 'type' => 'dine_in',
                 'status' => 'pending',
@@ -277,8 +285,8 @@ class PosKdsController extends Controller
             ]);
             $this->kitchenFlow->syncOrderStatus($order);
 
-            if ($table->status !== 'bill_requested') {
-                $table->update(['status' => 'occupied']);
+            if ($lockedTable->status !== 'bill_requested') {
+                $lockedTable->update(['status' => 'occupied']);
             }
 
             return $order;

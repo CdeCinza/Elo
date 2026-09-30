@@ -100,10 +100,12 @@ class CustomerSessionController extends Controller
             $this->stockService->ensureAvailable($lines);
 
             $order = DB::transaction(function () use ($table, $request, $lines) {
+                $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+
                 // Se a mesa já tiver comanda ativa, anexa a ela; senão cria uma nova
-                $order = $table->activeOrder ?? Order::create([
-                    'restaurant_id' => $table->restaurant_id,
-                    'table_id' => $table->id,
+                $order = $lockedTable->activeOrder ?? Order::create([
+                    'restaurant_id' => $lockedTable->restaurant_id,
+                    'table_id' => $lockedTable->id,
                     'user_id' => null,
                     'type' => 'dine_in',
                     'status' => 'pending',
@@ -129,17 +131,17 @@ class CustomerSessionController extends Controller
                 ]);
                 $this->kitchenFlow->syncOrderStatus($order);
 
-                if ($table->status !== 'bill_requested') {
-                    $table->update(['status' => 'occupied']);
+                if ($lockedTable->status !== 'bill_requested') {
+                    $lockedTable->update(['status' => 'occupied']);
                 }
 
                 ActivityLog::create([
-                    'restaurant_id' => $table->restaurant_id,
+                    'restaurant_id' => $lockedTable->restaurant_id,
                     'user_id' => null,
                     'subject_type' => Order::class,
                     'subject_id' => $order->id,
                     'action' => 'customer_placed_order',
-                    'payload' => ['table' => $table->number, 'items_count' => count($request->items)],
+                    'payload' => ['table' => $lockedTable->number, 'items_count' => count($request->items)],
                 ]);
 
                 return $order;

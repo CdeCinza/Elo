@@ -4,6 +4,7 @@ import React from 'react';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { formatBRL } from '@/lib/format';
+import { ProductImage } from '@/components/ui/ProductImage';
 
 interface FavoriteProduct {
   id: number;
@@ -45,10 +46,9 @@ export const HouseFavoritesSection: React.FC<HouseFavoritesProps> = ({ tableId, 
           >
             <div className="flex gap-3 items-start">
               <div className="w-20 h-20 rounded-xl overflow-hidden shrink-0 border border-[#EAE6E1]">
-                <img
+                <ProductImage
                   src={item.image}
                   alt={item.name}
-                  className="w-full h-full object-cover"
                 />
               </div>
 

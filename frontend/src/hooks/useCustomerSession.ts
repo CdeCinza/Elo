@@ -57,6 +57,7 @@ export function useCustomerSession(tableId: string | number) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const inFlightActionsRef = useRef(new Map<string, Promise<ActionResult>>());
+  const pollInFlightRef = useRef(false);
 
   // Toques repetidos enquanto a mesma ação está em andamento reaproveitam a requisição original
   const runExclusive = (actionKey: string, action: () => Promise<ActionResult>): Promise<ActionResult> => {
@@ -92,26 +93,66 @@ export function useCustomerSession(tableId: string | number) {
     }
   }, [tableId]);
 
+  const fetchTableData = useCallback(async () => {
+    try {
+      const response = await api.get(`/customer/table/${tableId}`);
+      setTable(response.data.table || null);
+    } catch (err) {
+      console.error('Erro ao atualizar a mesa:', err);
+    }
+  }, [tableId]);
+
   useEffect(() => {
+    let pollCount = 0;
+
+    const poll = async (includeCatalog = false) => {
+      if (pollInFlightRef.current) return;
+      pollInFlightRef.current = true;
+      try {
+        if (includeCatalog) {
+          await fetchSessionData(true);
+        } else {
+          await fetchTableData();
+        }
+      } finally {
+        pollInFlightRef.current = false;
+      }
+    };
+
     const initialFetch = setTimeout(() => {
-      void fetchSessionData();
+      pollInFlightRef.current = true;
+      void fetchSessionData().finally(() => {
+        pollInFlightRef.current = false;
+      });
     }, 0);
 
-    // Polling suave a cada 4 segundos para refletir mudanças da cozinha e do caixa
+    // A mesa muda rapidamente; o cardápio precisa de atualização menos frequente.
     const interval = setInterval(() => {
-      fetchSessionData(true);
+      if (document.hidden) return;
+      pollCount += 1;
+      void poll(pollCount % 8 === 0);
     }, 4000);
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        pollCount = 0;
+        void poll(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialFetch);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchSessionData]);
+  }, [fetchSessionData, fetchTableData]);
 
   const checkIn = () => runExclusive('check-in', async () => {
     try {
       const response = await api.post(`/customer/table/${tableId}/check-in`);
-      await fetchSessionData(true);
+      await fetchTableData();
       return { success: true, data: response.data };
     } catch (err) {
       return {
@@ -124,7 +165,7 @@ export function useCustomerSession(tableId: string | number) {
   const callWaiter = () => runExclusive('call-waiter', async () => {
     try {
       const response = await api.post(`/customer/table/${tableId}/call-waiter`);
-      await fetchSessionData(true);
+      await fetchTableData();
       return { success: true, data: response.data };
     } catch (err) {
       return {
@@ -137,7 +178,7 @@ export function useCustomerSession(tableId: string | number) {
   const requestBill = () => runExclusive('request-bill', async () => {
     try {
       const response = await api.post(`/customer/table/${tableId}/request-bill`);
-      await fetchSessionData(true);
+      await fetchTableData();
       return { success: true, data: response.data };
     } catch (err) {
       return {
@@ -150,7 +191,7 @@ export function useCustomerSession(tableId: string | number) {
   const sendOrder = (items: { product_id: number; quantity: number; notes?: string }[]) => runExclusive('send-order', async () => {
     try {
       const response = await api.post(`/customer/table/${tableId}/order`, { items });
-      await fetchSessionData(true);
+      await fetchTableData();
       return { success: true, data: response.data };
     } catch (err) {
       return {
