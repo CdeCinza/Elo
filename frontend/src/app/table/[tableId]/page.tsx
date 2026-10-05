@@ -11,7 +11,7 @@ import { ClosingExperienceBanner } from '@/components/customer/ClosingExperience
 import { CheckCircle2, User, Smartphone, Sparkles } from 'lucide-react';
 import { useCustomerSession, Product } from '@/hooks/useCustomerSession';
 import { toast } from '@/components/ui/ToastProvider';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { Modal } from '@/components/ui/Modal';
 
 export default function TableHomePage() {
   const params = useParams();
@@ -21,7 +21,6 @@ export default function TableHomePage() {
 
   const [waiterCalled, setWaiterCalled] = useState(false);
   const [showPreferenceModal, setShowPreferenceModal] = useState(false);
-useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
   const [startingSession, setStartingSession] = useState(false);
   const [sessionStarted, setSessionStarted] = useState(false);
   const [callingWaiter, setCallingWaiter] = useState(false);
@@ -90,7 +89,7 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
   }));
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15 font-sans">
+    <div className="elo-interface min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15 font-sans">
       <div>
         {/* Header Fixo com Status Real da Mesa */}
         <SalonHeader
@@ -113,7 +112,7 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
           <div className="max-w-4xl mx-auto px-5 sm:px-8 mt-4">
             <div className="p-4 rounded-2xl bg-white border border-[#2D6A4F]/30 text-[#191817] flex items-center gap-3 shadow-sm">
               <CheckCircle2 className="w-5 h-5 text-[#2D6A4F] shrink-0" />
-              <div className="text-xs">
+              <div className="text-sm">
                 <p className="font-bold text-[#191817]">Garçom chamado com sucesso</p>
                 <p className="text-[#6E6760]">
                   Um integrante da nossa equipe está a caminho da Mesa {tableId}. Sinta-se à vontade para navegar no cardápio enquanto isso.
@@ -145,7 +144,7 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
           </main>
         ) : isTableFree && !showPreferenceModal ? (
           <main className="max-w-2xl mx-auto px-6 py-16 text-center flex flex-col items-center justify-center min-h-[70vh]">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/10 px-3 py-1 rounded-full mb-4">
+            <span className="text-sm font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/10 px-3 py-1 rounded-full mb-4">
               Atendimento Digital • ELO
             </span>
 
@@ -166,7 +165,7 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
               <span>{startingSession ? 'Iniciando atendimento...' : 'Iniciar atendimento • Estou na mesa'}</span>
             </button>
 
-            <p className="text-xs text-[#57534E] mt-6">
+            <p className="text-sm text-[#57534E] mt-6">
               Ao tocar, nossa equipe no salão saberá que você chegou à mesa.
             </p>
           </main>
@@ -199,16 +198,16 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
 
       {/* MODAL: Preferência de Atendimento (Garçom vs Tablet) */}
       {showPreferenceModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+        <Modal isOpen={true} title="Preferências de atendimento" isBusy={false} onClose={() => setShowPreferenceModal(false)}>
           <div className="w-full max-w-lg bg-[#F9F8F6] rounded-3xl border border-[#EAE6E1] p-6 sm:p-8 shadow-2xl text-left space-y-6">
             <div>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/15 px-2.5 py-0.5 rounded-md">
+              <span className="text-sm font-semibold uppercase tracking-wider text-[#9E3712] bg-[#C84E1F]/15 px-2.5 py-0.5 rounded-md">
                 Mesa {tableId} • Check-in realizado
               </span>
               <h2 className="text-2xl font-serif font-bold text-[#191817] mt-2">
                 Como prefere ser atendido hoje?
               </h2>
-              <p className="text-xs text-[#6E6760] mt-1">
+              <p className="text-sm text-[#6E6760] mt-1">
                 Escolha o modo mais confortável para você e seus acompanhantes:
               </p>
             </div>
@@ -226,11 +225,11 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
                   <h3 className="text-sm font-bold text-[#191817] group-hover:text-[#C84E1F] transition-colors">
                     Chamar um garçom
                   </h3>
-                  <p className="text-xs text-[#6E6760] mt-1 leading-relaxed">
+                  <p className="text-sm text-[#6E6760] mt-1 leading-relaxed">
                     Um integrante da nossa equipe virá até a mesa para apresentar os destaques e anotar o pedido.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold text-[#9E3712] mt-4 block">
+                <span className="text-sm font-semibold text-[#9E3712] mt-4 block">
                   Solicitar equipe →
                 </span>
               </button>
@@ -247,11 +246,11 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
                   <h3 className="text-sm font-bold text-[#191817]">
                     Pedir pelo tablet
                   </h3>
-                  <p className="text-xs text-[#6E6760] mt-1 leading-relaxed">
+                  <p className="text-sm text-[#6E6760] mt-1 leading-relaxed">
                     Navegue pelo cardápio completo, veja fotos e envie os pedidos diretamente para a cozinha com rapidez.
                   </p>
                 </div>
-                <span className="text-[11px] font-semibold text-[#9E3712] mt-4 block">
+                <span className="text-sm font-semibold text-[#9E3712] mt-4 block">
                   Abrir cardápio digital →
                 </span>
               </button>
@@ -260,16 +259,16 @@ useEscapeKey(showPreferenceModal, () => setShowPreferenceModal(false));
             <div className="pt-2 text-center">
               <button
                 onClick={() => setShowPreferenceModal(false)}
-                className="text-xs text-[#57534E] hover:text-[#191817] transition-colors underline cursor-pointer"
+                className="text-sm text-[#57534E] hover:text-[#191817] transition-colors underline cursor-pointer"
               >
                 Explorar o cardápio sem definir preferência agora
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
-      <footer className="border-t border-[#EAE6E1] py-6 px-6 text-center text-xs text-[#6E6760]">
+      <footer className="border-t border-[#EAE6E1] py-6 px-6 text-center text-sm text-[#6E6760]">
         ELO Gastronomia • Cardápio Digital na Mesa
       </footer>
     </div>

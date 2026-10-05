@@ -16,6 +16,7 @@ import {
 import Link from 'next/link';
 import { toast } from '@/components/ui/ToastProvider';
 import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { Modal } from '@/components/ui/Modal';
 import { formatBRL } from '@/lib/format';
 import { StripePaymentModal, isStripeConfigured } from '@/components/payment/StripePaymentModal';
 import { useCustomerSession } from '@/hooks/useCustomerSession';
@@ -78,35 +79,35 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
       case 'pending':
       case 'confirmed':
         return (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 flex items-center gap-1.5 w-fit">
+          <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 flex items-center gap-1.5 w-fit">
             <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
             {status === 'confirmed' ? 'Confirmado na cozinha' : 'Na fila de pedidos'}
           </span>
         );
       case 'preparing':
         return (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#C84E1F]/10 text-[#C84E1F] flex items-center gap-1.5 w-fit">
+          <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-[#C84E1F]/10 text-[#C84E1F] flex items-center gap-1.5 w-fit">
             <ChefHat className="w-3.5 h-3.5" />
             Em preparo
           </span>
         );
       case 'ready':
         return (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center gap-1.5 w-fit">
+          <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center gap-1.5 w-fit">
             <Flame className="w-3.5 h-3.5" />
             Pronto para servir
           </span>
         );
       case 'delivered':
         return (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center gap-1.5 w-fit">
+          <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-[#2D6A4F]/10 text-[#2D6A4F] flex items-center gap-1.5 w-fit">
             <CheckCircle2 className="w-3.5 h-3.5" />
             Entregue na mesa
           </span>
         );
       default:
         return (
-          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-[#F2EFEA] text-[#6E6760] w-fit">
+          <span className="text-sm font-medium px-2 py-0.5 rounded-md bg-[#F2EFEA] text-[#6E6760] w-fit">
             {status}
           </span>
         );
@@ -114,7 +115,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
   };
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15">
+    <div className="elo-interface min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15">
       <div>
         <SalonHeader tableNumber={tableId} />
 
@@ -130,11 +131,11 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
             </Link>
             <div className="text-center">
               <h2 className="text-sm font-bold text-[#191817]">Comanda digital</h2>
-              <p className="text-[11px] text-[#6E6760]">Consumo ativo da Mesa {tableId}</p>
+              <p className="text-sm text-[#6E6760]">Consumo ativo da Mesa {tableId}</p>
             </div>
             <Link
               href={`/table/${tableId}/menu`}
-              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-[#EAE6E1] text-xs font-semibold text-[#191817] hover:border-[#191817]/40 transition-colors"
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-white border border-[#EAE6E1] text-sm font-semibold text-[#191817] hover:border-[#191817]/40 transition-colors"
             >
               <Plus className="w-3.5 h-3.5 text-[#C84E1F]" />
               <span>Pedir mais</span>
@@ -150,14 +151,14 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
                 <ChefHat className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-[#191817]">{kitchenSummary.title}</h3>
-                <p className="text-[11px] text-[#6E6760]">{kitchenSummary.description}</p>
+                <h3 className="text-sm font-bold text-[#191817]">{kitchenSummary.title}</h3>
+                <p className="text-sm text-[#6E6760]">{kitchenSummary.description}</p>
               </div>
             </div>
             {items.length > 0 && (orderStatus === 'pending' || orderStatus === 'confirmed' || orderStatus === 'preparing') && (
               <div className="text-right">
-                <span className="text-[10px] text-[#6E6760]">Tempo estimado</span>
-                <p className="text-xs font-semibold text-[#191817] flex items-center gap-1">
+                <span className="text-sm text-[#6E6760]">Tempo estimado</span>
+                <p className="text-sm font-semibold text-[#191817] flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-[#C84E1F]" />
                   ~ 12-15 min
                 </p>
@@ -168,16 +169,16 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
           {/* Lista de Itens da Comanda */}
           <div className="space-y-2.5">
             <div className="flex items-center justify-between px-1">
-              <h3 className="text-xs font-semibold text-[#191817]">
+              <h3 className="text-sm font-semibold text-[#191817]">
                 Itens na comanda
               </h3>
-              <span className="text-xs text-[#6E6760]">
+              <span className="text-sm text-[#6E6760]">
                 {items.length} {items.length === 1 ? 'item' : 'itens'}
               </span>
             </div>
 
             {items.length === 0 && (
-              <div className="p-8 rounded-2xl bg-white border border-[#EAE6E1] text-center text-xs text-[#6E6760]">
+              <div className="p-8 rounded-2xl bg-white border border-[#EAE6E1] text-center text-sm text-[#6E6760]">
                 {loading ? 'Carregando comanda...' : 'Nenhum item pedido ainda nesta comanda.'}
               </div>
             )}
@@ -189,22 +190,22 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
               >
                 <div className="flex-1 pr-3">
                   <div className="flex items-center gap-2 mb-1.5">
-                    <span className="w-5 h-5 rounded-md bg-[#F9F8F6] border border-[#EAE6E1] text-[#191817] text-xs font-bold flex items-center justify-center">
+                    <span className="w-5 h-5 rounded-md bg-[#F9F8F6] border border-[#EAE6E1] text-[#191817] text-sm font-bold flex items-center justify-center">
                       {item.quantity}x
                     </span>
-                    <h4 className="text-xs sm:text-sm font-bold text-[#191817]">{item.product_name}</h4>
+                    <h4 className="text-sm sm:text-sm font-bold text-[#191817]">{item.product_name}</h4>
                   </div>
                   {item.notes && (
-                    <p className="text-[11px] text-[#6E6760] mb-2 pl-7">{item.notes}</p>
+                    <p className="text-sm text-[#6E6760] mb-2 pl-7">{item.notes}</p>
                   )}
                   <div className="pl-7">{getStatusBadge(item.status ?? activeOrder?.status ?? 'pending')}</div>
                 </div>
 
                 <div className="text-right">
-                  <span className="text-xs font-bold text-[#191817]">
+                  <span className="text-sm font-bold text-[#191817]">
                     {formatBRL(Number(item.subtotal || item.unit_price * item.quantity))}
                   </span>
-                  <p className="text-[10px] text-[#6E6760]">
+                  <p className="text-sm text-[#6E6760]">
                     {formatBRL(Number(item.unit_price))} un
                   </p>
                 </div>
@@ -217,7 +218,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Users className="w-4 h-4 text-[#191817]" />
-                <span className="text-xs font-bold text-[#191817]">Dividir a conta</span>
+                <span className="text-sm font-bold text-[#191817]">Dividir a conta</span>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -228,7 +229,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
                 >
                   -
                 </button>
-                <span className="text-xs font-semibold px-2" aria-live="polite">
+                <span className="text-sm font-semibold px-2" aria-live="polite">
                   {splitCount} {splitCount === 1 ? 'pessoa' : 'pessoas'}
                 </span>
                 <button
@@ -242,7 +243,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
               </div>
             </div>
 
-            <div className="pt-3 border-t border-[#F2EFEA] space-y-1.5 text-xs">
+            <div className="pt-3 border-t border-[#F2EFEA] space-y-1.5 text-sm">
               <div className="flex justify-between text-[#6E6760]">
                 <span>Subtotal dos itens</span>
                 <span>{formatBRL(subtotal)}</span>
@@ -274,7 +275,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
               </div>
 
               {splitCount > 1 && (
-                <div className="flex justify-between text-xs font-bold text-[#C84E1F] pt-1">
+                <div className="flex justify-between text-sm font-bold text-[#C84E1F] pt-1">
                   <span>Por pessoa ({splitCount}x)</span>
                   <span>{formatBRL(totalPerPerson)}</span>
                 </div>
@@ -289,7 +290,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
         <div className="max-w-2xl mx-auto flex gap-3">
           <Link
             href={`/table/${tableId}/menu`}
-            className="flex-1 py-3 px-3 rounded-xl bg-white border border-[#EAE6E1] hover:border-[#191817]/40 text-[#191817] font-semibold text-xs text-center flex items-center justify-center gap-1.5 transition-colors"
+            className="flex-1 py-3 px-3 rounded-xl bg-white border border-[#EAE6E1] hover:border-[#191817]/40 text-[#191817] font-semibold text-sm text-center flex items-center justify-center gap-1.5 transition-colors"
           >
             <Plus className="w-3.5 h-3.5 text-[#C84E1F]" />
             <span>Adicionar pratos</span>
@@ -298,7 +299,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
           <button
             onClick={handleOpenBillModal}
             disabled={requestingBill || items.length === 0}
-            className="flex-[2] py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            className="flex-[2] py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm sm:text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
           >
             <CreditCard className="w-4 h-4" />
             <span>{requestingBill ? 'Solicitando conta...' : `Pedir conta (${formatBRL(total)})`}</span>
@@ -308,19 +309,19 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
 
       {/* Modal de Pagamento / QR Code Pix */}
       {showPaymentModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <Modal isOpen={showPaymentModal} title={`Pagamento da Mesa ${tableId}`} onClose={() => setShowPaymentModal(false)}>
           <div className="w-full max-w-md bg-white rounded-2xl border border-[#EAE6E1] p-6 shadow-xl text-center">
             <h3 className="text-base font-bold text-[#191817] mb-1">Pagamento da Mesa {tableId}</h3>
-            <p className="text-xs text-[#6E6760] mb-4">
+            <p className="text-sm text-[#6E6760] mb-4">
               {isStripeConfigured ? 'Pague agora com cartão pelo tablet ou aguarde a equipe para PIX, maquininha ou dinheiro.' : 'A equipe já foi avisada e vem até a mesa para receber via PIX, maquininha ou dinheiro.'}
             </p>
 
-            <div className="text-xs text-[#6E6760] mb-5 p-4 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1]">
+            <div className="text-sm text-[#6E6760] mb-5 p-4 rounded-xl bg-[#F9F8F6] border border-[#EAE6E1]">
               <p className="font-bold text-[#191817] text-2xl mb-1">
                 {formatBRL(total)}
               </p>
               {splitCount > 1 && (
-                <p className="text-[11px] text-[#6E6760]">
+                <p className="text-sm text-[#6E6760]">
                   {splitCount} pessoas • {formatBRL(totalPerPerson)} cada
                 </p>
               )}
@@ -333,7 +334,7 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
                   setShowPaymentModal(false);
                   setShowStripeModal(true);
                 }}
-                className="w-full py-3 rounded-xl bg-[#191817] hover:bg-[#2C2A29] text-white text-xs font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                className="w-full py-3 rounded-xl bg-[#191817] hover:bg-[#2C2A29] text-white text-sm font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-sm"
               >
                 <CreditCard className="w-4 h-4 text-[#C84E1F]" />
                 Pagar com Cartão (Stripe Online)
@@ -341,13 +342,13 @@ useEscapeKey(showPaymentModal, () => setShowPaymentModal(false));
               )}
               <button
                 onClick={() => setShowPaymentModal(false)}
-                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer"
+                className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold transition-colors cursor-pointer"
               >
                 Pagar com a equipe (PIX, maquininha ou dinheiro)
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Modal de Pagamento Seguro Stripe */}

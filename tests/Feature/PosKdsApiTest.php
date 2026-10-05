@@ -517,6 +517,68 @@ class PosKdsApiTest extends TestCase
         $this->assertEquals('preparing', $order->fresh()->status);
     }
 
+    public function test_kds_advances_only_selected_items_and_preserves_other_stations(): void
+    {
+        foreach (['Chapa', 'Fritura'] as $notes) {
+            $this->postJson('/api/v1/pos/tables/01/items', [
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+                'notes' => $notes,
+            ])->assertOk();
+        }
+
+        $order = Order::firstOrFail();
+        $items = $order->items()->orderBy('id')->get();
+
+        foreach (['pending' => 'preparing', 'preparing' => 'ready', 'ready' => 'delivered'] as $from => $status) {
+            $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+                'status' => $status,
+                'from' => $from,
+                'item_ids' => [$items[0]->id],
+            ])->assertOk();
+
+            $this->assertSame($status, $items[0]->fresh()->status);
+            $this->assertSame('pending', $items[1]->fresh()->status);
+            $this->assertSame('pending', $order->fresh()->status);
+        }
+    }
+
+    public function test_kds_rejects_foreign_empty_duplicate_and_stale_item_selections(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+        $order = Order::firstOrFail();
+        $item = $order->items()->firstOrFail();
+        $otherOrder = Order::create([
+            'restaurant_id' => $this->restaurant->id,
+            'type' => 'dine_in',
+            'status' => 'pending',
+            'subtotal' => 36.90,
+            'total' => 36.90,
+        ]);
+        $otherItem = OrderItem::create([
+            'order_id' => $otherOrder->id,
+            'product_id' => $this->product->id,
+            'unit_price' => 36.90,
+            'quantity' => 1,
+            'subtotal' => 36.90,
+        ]);
+
+        foreach ([[], [$item->id, $item->id], [$otherItem->id]] as $itemIds) {
+            $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+                'status' => 'preparing', 'from' => 'pending', 'item_ids' => $itemIds,
+            ])->assertUnprocessable();
+        }
+
+        $this->assertSame('pending', $otherItem->fresh()->status);
+        $item->update(['status' => 'preparing']);
+        $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+            'status' => 'preparing', 'from' => 'pending', 'item_ids' => [$item->id],
+        ])->assertUnprocessable();
+        $this->assertSame('preparing', $item->fresh()->status);
+    }
+
     public function test_pos_can_create_update_and_delete_table(): void
     {
         // 1. Cria nova mesa

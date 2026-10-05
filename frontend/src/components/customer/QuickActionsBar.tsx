@@ -29,10 +29,10 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
             <Bell className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs sm:text-sm font-semibold text-[#191817]">
+            <h4 className="text-sm sm:text-sm font-semibold text-[#191817]">
               Chamar garçom
             </h4>
-            <p className="text-[11px] text-[#6E6760]">Solicitar na mesa</p>
+            <p className="text-sm text-[#6E6760]">Solicitar na mesa</p>
           </div>
         </button>
 
@@ -45,10 +45,10 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
             <Receipt className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs sm:text-sm font-semibold text-[#191817]">
+            <h4 className="text-sm sm:text-sm font-semibold text-[#191817]">
               Ver comanda
             </h4>
-            <p className="text-[11px] text-[#6E6760]">Consumo e divisão</p>
+            <p className="text-sm text-[#6E6760]">Consumo e divisão</p>
           </div>
         </Link>
 
@@ -70,10 +70,10 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
               <Wifi className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-xs sm:text-sm font-semibold text-[#191817]">
+              <h4 className="text-sm sm:text-sm font-semibold text-[#191817]">
                 Wi-Fi da casa
               </h4>
-              <p className="text-[11px] text-[#6E6760]">Ver senha</p>
+              <p className="text-sm text-[#6E6760]">Ver senha</p>
             </div>
           </button>
         )}
@@ -87,10 +87,10 @@ export const QuickActionsBar: React.FC<QuickActionsBarProps> = ({
             <HelpCircle className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="text-xs sm:text-sm font-semibold text-[#191817]">
+            <h4 className="text-sm sm:text-sm font-semibold text-[#191817]">
               Ajuda
             </h4>
-            <p className="text-[11px] text-[#6E6760]">Como funciona</p>
+            <p className="text-sm text-[#6E6760]">Como funciona</p>
           </div>
         </button>
       </div>

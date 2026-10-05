@@ -427,12 +427,17 @@ class PosKdsController extends Controller
         $request->validate([
             'status' => 'required|in:preparing,ready,delivered',
             'from' => 'nullable|in:pending,preparing,ready',
+            'item_ids' => 'sometimes|required|array|min:1|max:500',
+            'item_ids.*' => 'required|integer|distinct',
         ]);
 
         $newStatus = $request->status;
 
         try {
-            DB::transaction(fn () => $this->kitchenFlow->advance($order, $newStatus, $request->user()?->id, $request->input('from')));
+            DB::transaction(function () use ($order, $newStatus, $request): void {
+                $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+                $this->kitchenFlow->advance($lockedOrder, $newStatus, $request->user()?->id, $request->input('from'), $request->input('item_ids'));
+            });
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

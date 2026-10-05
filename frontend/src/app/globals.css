@@ -19,6 +19,41 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
+.elo-modal::backdrop {
+  background: rgb(0 0 0 / 60%);
+  backdrop-filter: blur(4px);
+}
+
+.elo-modal > :first-child {
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+}
+
+:is(.elo-interface, .elo-modal) :is(button, input, select, textarea, [role="button"], [role="checkbox"]) {
+  min-height: 44px;
+}
+
+:is(.elo-interface, .elo-modal) button {
+  min-width: 44px;
+}
+
+:is(.elo-interface, .elo-modal) :is(input, select, textarea) {
+  font-size: 1rem;
+}
+
+:is(.elo-interface, .elo-modal) :is(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 3px solid #191817;
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .font-editorial {
   font-family: var(--font-serif), Georgia, Cambria, serif;
 }

@@ -25,7 +25,7 @@ export const EditorialHero: React.FC<EditorialHeroProps> = ({ tableId }) => {
 
         {/* Conteúdo Editorial */}
         <div className="relative z-10 max-w-lg p-7 sm:p-12">
-          <p className="text-xs text-[#EAE6E1]/70 mb-2">
+          <p className="text-sm text-[#EAE6E1]/70 mb-2">
             Cardápio da casa
           </p>
 
@@ -33,13 +33,13 @@ export const EditorialHero: React.FC<EditorialHeroProps> = ({ tableId }) => {
             O melhor da nossa cozinha, na sua mesa.
           </h1>
 
-          <p className="text-xs sm:text-sm text-[#EAE6E1]/80 leading-relaxed mb-6 max-w-md">
+          <p className="text-sm sm:text-sm text-[#EAE6E1]/80 leading-relaxed mb-6 max-w-md">
             Ingredientes frescos grelhados na brasa, entradas artesanais e bebidas pensadas para o seu momento.
           </p>
 
           <Link
             href={`/table/${tableId}/menu`}
-            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs sm:text-sm font-semibold transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm sm:text-sm font-semibold transition-colors"
           >
             <span>Ver cardápio completo</span>
             <ArrowUpRight className="w-4 h-4" />

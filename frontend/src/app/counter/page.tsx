@@ -7,7 +7,7 @@ import { isAxiosError } from 'axios';
 import { api, getApiErrorMessage, signOut } from '@/lib/api';
 import { toast } from '@/components/ui/ToastProvider';
 import { formatBRL } from '@/lib/format';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { Modal } from '@/components/ui/Modal';
 import { getAuthUser, getActiveRestaurant, User, Restaurant } from '@/lib/auth';
 import {
   LayoutGrid,
@@ -115,6 +115,7 @@ export default function PosCounterPage() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [loadError, setLoadError] = useState<'forbidden' | 'network' | null>(null);
   const roleName = authUser?.is_super_admin ? 'super_admin' : authUser?.role?.name ?? '';
+  const dataUnavailable = loading || !!loadError;
   const canManageTables = ['owner', 'restaurant_admin', 'manager', 'super_admin'].includes(roleName);
   const canAccessKitchen = ['owner', 'restaurant_admin', 'manager', 'chef', 'super_admin'].includes(roleName);
   const [activeRestaurant, setActiveRestaurantState] = useState<Restaurant | null>(null);
@@ -149,14 +150,6 @@ export default function PosCounterPage() {
     isDestructive?: boolean;
     onConfirm: () => Promise<void> | void;
   } | null>(null);
-
-  // Esc fecha o modal aberto mais recente (confirmação > lançamento > edição > criação)
-  useEscapeKey(!!confirmModal || showAddModal || showEditModal || showCreateModal, () => {
-    if (confirmModal) setConfirmModal(null);
-    else if (showAddModal) setShowAddModal(false);
-    else if (showEditModal) setShowEditModal(false);
-    else setShowCreateModal(false);
-  });
 
   // Determina turno dinamicamente de acordo com horário local
   const currentShift = useMemo(() => {
@@ -499,13 +492,13 @@ export default function PosCounterPage() {
 
   return (
     <>
-    <div className="print:hidden min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
+    <div className="elo-interface print:hidden min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
       {/* 1. Header do Balcão */}
       <header className="h-16 px-4 sm:px-6 gap-2 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0 shadow-2xs">
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <Link href="/" className="flex items-center gap-2 group">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="hidden sm:inline text-xs text-[#78716A] border-l border-[#E0DBD3] pl-3">
+            <span className="hidden sm:inline text-sm text-[#6E6760] border-l border-[#E0DBD3] pl-3">
               Frente de Caixa & Salão
             </span>
           </Link>
@@ -514,9 +507,9 @@ export default function PosCounterPage() {
           <Link
             href="/kitchen"
             target="_blank"
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
           >
-            <ChefHat className="w-3.5 h-3.5 text-[#C84E1F]" />
+            <ChefHat className="w-3.5 h-3.5 text-[#9E3712]" />
             <span>KDS Cozinha</span>
           </Link>
           )}
@@ -524,16 +517,16 @@ export default function PosCounterPage() {
           {canManageTables && (
           <Link
             href="/menu"
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
           >
-            <BookOpen className="w-3.5 h-3.5 text-[#C84E1F]" />
+            <BookOpen className="w-3.5 h-3.5 text-[#9E3712]" />
             <span>Cardápio</span>
           </Link>
           )}
 
           {/* Badge do Restaurante Ativo */}
           {activeRestaurant && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800 font-medium">
+            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium">
               <Store className="w-3.5 h-3.5 text-amber-700" />
               <span>{activeRestaurant.name}</span>
             </div>
@@ -543,7 +536,7 @@ export default function PosCounterPage() {
           {authUser?.is_super_admin && (
             <Link
               href="/superadmin"
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-xs text-stone-700 hover:bg-stone-200 font-medium transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-stone-100 border border-stone-200 text-sm text-stone-700 hover:bg-stone-200 font-medium transition-colors"
             >
               <ShieldCheck className="w-3.5 h-3.5 text-stone-600" />
               <span>Super Admin</span>
@@ -552,13 +545,13 @@ export default function PosCounterPage() {
         </div>
 
         {/* Métricas Resumidas no Topo */}
-        <div className="hidden lg:flex items-center gap-6 text-xs text-[#78716A]">
+        <div className="hidden lg:flex items-center gap-6 text-sm text-[#6E6760]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-600" />
             <span>
               Salão:{' '}
               <strong className="text-[#191817]">
-                {occupiedCount + billCount}/{tables.length} ocupadas
+                {occupiedCount + billCount}/{dataUnavailable ? '—' : tables.length} ocupadas
               </strong>
             </span>
           </div>
@@ -566,8 +559,8 @@ export default function PosCounterPage() {
           <div>
             <span>
               Total aberto:{' '}
-              <strong className="text-[#C84E1F] font-semibold">
-                {formatBRL(totalOpenRevenue)}
+              <strong className="text-[#9E3712] font-semibold">
+                {dataUnavailable ? '—' : formatBRL(totalOpenRevenue)}
               </strong>
             </span>
           </div>
@@ -583,10 +576,10 @@ export default function PosCounterPage() {
           {/* Operador logado */}
           <div
             title="Usuário logado neste caixa"
-            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs shadow-2xs max-w-[220px]"
+            className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm shadow-2xs max-w-[220px]"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
-            <span className="text-[#78716A]">Operador:</span>
+            <span className="text-[#6E6760]">Operador:</span>
             <span className="font-medium text-[#191817] truncate">{authUser?.name ?? '—'}</span>
           </div>
 
@@ -594,9 +587,9 @@ export default function PosCounterPage() {
             onClick={() => fetchTables(false)}
             title="Atualizar mesas agora"
             aria-label="Atualizar mesas agora"
-            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-[#191817] text-[#78716A] transition-colors cursor-pointer shadow-2xs"
+            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-[#191817] text-[#6E6760] transition-colors cursor-pointer shadow-2xs"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#C84E1F]' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-[#9E3712]' : ''}`} />
           </button>
 
           <button
@@ -606,7 +599,7 @@ export default function PosCounterPage() {
             }}
             title="Sair do sistema"
             aria-label="Sair do sistema"
-            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#78716A] transition-colors shadow-2xs cursor-pointer"
+            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#6E6760] transition-colors shadow-2xs cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>
@@ -617,30 +610,30 @@ export default function PosCounterPage() {
       <div className="px-6 py-4 bg-white border-b border-[#EAE6E1] shrink-0">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
           <div className="p-3.5 rounded-xl bg-[#FAF8F5] border border-[#EAE6E1]">
-            <span className="text-[11px] text-[#78716A] font-medium">Mesas ocupadas</span>
+            <span className="text-sm text-[#6E6760] font-medium">Mesas ocupadas</span>
             <p className="text-xl font-bold text-[#191817] mt-0.5">
-              {occupiedCount}{' '}
-              <span className="text-xs text-[#78716A] font-normal">mesas</span>
+              {dataUnavailable ? '—' : occupiedCount}{' '}
+              <span className="text-sm text-[#6E6760] font-normal">mesas</span>
             </p>
           </div>
           <div className="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200">
-            <span className="text-[11px] text-amber-800 font-medium">Pedindo conta</span>
+            <span className="text-sm text-amber-800 font-medium">Pedindo conta</span>
             <p className="text-xl font-bold text-amber-900 mt-0.5">
-              {billCount}{' '}
-              <span className="text-xs text-amber-700 font-normal">urgente</span>
+              {dataUnavailable ? '—' : billCount}{' '}
+              <span className="text-sm text-amber-700 font-normal">urgente</span>
             </p>
           </div>
           <div className="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
-            <span className="text-[11px] text-emerald-800 font-medium">Mesas livres</span>
+            <span className="text-sm text-emerald-800 font-medium">Mesas livres</span>
             <p className="text-xl font-bold text-emerald-900 mt-0.5">
-              {freeCount}{' '}
-              <span className="text-xs text-emerald-700 font-normal">disponíveis</span>
+              {dataUnavailable ? '—' : freeCount}{' '}
+              <span className="text-sm text-emerald-700 font-normal">disponíveis</span>
             </p>
           </div>
           <div className="p-3.5 rounded-xl bg-[#C84E1F]/5 border border-[#C84E1F]/20">
-            <span className="text-[11px] text-[#9E3712] font-semibold">Total em aberto no salão</span>
+            <span className="text-sm text-[#9E3712] font-semibold">Total em aberto no salão</span>
             <p className="text-xl font-bold text-[#9E3712] mt-0.5">
-              {formatBRL(totalOpenRevenue)}
+              {dataUnavailable ? '—' : formatBRL(totalOpenRevenue)}
             </p>
           </div>
         </div>
@@ -650,62 +643,67 @@ export default function PosCounterPage() {
           <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 bg-[#FAF8F5] p-1 rounded-xl border border-[#EAE6E1]">
             <button
               onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              aria-pressed={filter === 'all'}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 filter === 'all'
                   ? 'bg-white text-[#191817] shadow-xs font-semibold'
-                  : 'text-[#78716A] hover:text-[#191817]'
+                  : 'text-[#6E6760] hover:text-[#191817]'
               }`}
             >
-              Todas ({tables.length})
+              Todas ({dataUnavailable ? '—' : tables.length})
             </button>
             <button
               onClick={() => setFilter('occupied')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              aria-pressed={filter === 'occupied'}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 filter === 'occupied'
                   ? 'bg-[#C84E1F] text-white shadow-xs font-semibold'
-                  : 'text-[#78716A] hover:text-[#191817]'
+                  : 'text-[#6E6760] hover:text-[#191817]'
               }`}
             >
-              Ocupadas ({occupiedCount})
+              Ocupadas ({dataUnavailable ? '—' : occupiedCount})
             </button>
             <button
               onClick={() => setFilter('bill_requested')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              aria-pressed={filter === 'bill_requested'}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 filter === 'bill_requested'
                   ? 'bg-amber-100 text-amber-900 border border-amber-300 font-semibold'
-                  : 'text-[#78716A] hover:text-amber-800'
+                  : 'text-[#6E6760] hover:text-amber-800'
               }`}
             >
-              Pedindo conta ({billCount})
+              Pedindo conta ({dataUnavailable ? '—' : billCount})
             </button>
             <button
               onClick={() => setFilter('free')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+              aria-pressed={filter === 'free'}
+              className={`shrink-0 px-3 py-1.5 rounded-lg text-sm font-medium whitespace-nowrap transition-colors cursor-pointer ${
                 filter === 'free'
                   ? 'bg-emerald-600 text-white shadow-xs font-semibold'
-                  : 'text-[#78716A] hover:text-emerald-800'
+                  : 'text-[#6E6760] hover:text-emerald-800'
               }`}
             >
-              Livres ({freeCount})
+              Livres ({dataUnavailable ? '—' : freeCount})
             </button>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
             <div className="relative w-full sm:w-60">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#A8A199]" />
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#6E6760]" />
               <input
                 type="text"
                 maxLength={40}
+                aria-label="Buscar mesa ou garçom"
                 placeholder="Buscar mesa ou garçom..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value.slice(0, 40))}
-                className="w-full bg-[#FAF8F5] border border-[#E0DBD3] rounded-xl pl-9 pr-7 py-1.5 text-xs text-[#191817] placeholder-[#A8A199] focus:outline-none focus:border-[#C84E1F] focus:bg-white transition-colors"
+                className="w-full bg-[#FAF8F5] border border-[#E0DBD3] rounded-xl pl-9 pr-7 py-1.5 text-sm text-[#191817] placeholder-[#6E6760] focus:outline-none focus:border-[#C84E1F] focus:bg-white transition-colors"
               />
               {searchQuery && (
-                <button
+                <button aria-label="Limpar busca"
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#A8A199] hover:text-[#191817] p-0.5 cursor-pointer"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-[#6E6760] hover:text-[#191817] p-0.5 cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
@@ -717,7 +715,7 @@ export default function PosCounterPage() {
             <button
               type="button"
               onClick={handleOpenCreateModal}
-              className="px-3.5 py-1.5 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors shrink-0 shadow-xs cursor-pointer"
+              className="px-3.5 py-1.5 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold flex items-center gap-1.5 whitespace-nowrap transition-colors shrink-0 shadow-xs cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Nova mesa</span>
@@ -732,7 +730,7 @@ export default function PosCounterPage() {
         {/* Lado Esquerdo: Grid Rico de Mesas */}
         <section className="flex-1 p-6 overflow-y-auto border-b lg:border-b-0 lg:border-r border-[#EAE6E1]">
           {loadError && tables.length > 0 && (
-            <div role="status" className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2">
+            <div role="status" className="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-sm flex items-center gap-2">
               <AlertTriangle className="w-4 h-4 shrink-0" />
               <span>Conexão instável: exibindo os últimos dados carregados. Tentando novamente...</span>
             </div>
@@ -741,19 +739,19 @@ export default function PosCounterPage() {
           {loadError && tables.length === 0 && !loading && (
             <div className="h-full flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
               <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center mb-4 shadow-xs">
-                <AlertTriangle className="w-8 h-8 text-[#C84E1F]" />
+                <AlertTriangle className="w-8 h-8 text-[#9E3712]" />
               </div>
               <h3 className="text-base font-semibold text-[#191817] mb-1">
                 {loadError === 'forbidden' ? 'Seu perfil não acessa o caixa' : 'Não foi possível carregar o salão'}
               </h3>
-              <p className="text-xs text-[#78716A] mb-6">
+              <p className="text-sm text-[#6E6760] mb-6">
                 {loadError === 'forbidden'
                   ? 'Esta tela é usada por gerência, garçons e caixa. Entre com outra conta ou vá para a sua área.'
                   : 'Verifique a conexão com o servidor e tente novamente.'}
               </p>
               <div className="flex items-center gap-3">
                 {loadError === 'forbidden' && canAccessKitchen && (
-                  <Link href="/kitchen" className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold">
+                  <Link href="/kitchen" className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold">
                     Ir para a cozinha
                   </Link>
                 )}
@@ -761,7 +759,7 @@ export default function PosCounterPage() {
                   <button
                     type="button"
                     onClick={() => void fetchTables(false)}
-                    className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold cursor-pointer"
                   >
                     Tentar novamente
                   </button>
@@ -773,13 +771,13 @@ export default function PosCounterPage() {
           {/* Caso não haja mesas cadastradas */}
           {!loadError && tables.length === 0 && !loading && (
             <div className="h-full flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
-              <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center text-[#A8A199] mb-4 shadow-xs">
-                <LayoutGrid className="w-8 h-8 text-[#C84E1F]" />
+              <div className="w-16 h-16 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center text-[#6E6760] mb-4 shadow-xs">
+                <LayoutGrid className="w-8 h-8 text-[#9E3712]" />
               </div>
               <h3 className="text-base font-semibold text-[#191817] mb-1">
                 Nenhuma mesa cadastrada no salão
               </h3>
-              <p className="text-xs text-[#78716A] mb-6">
+              <p className="text-sm text-[#6E6760] mb-6">
                 Cadastre as mesas do seu restaurante ou inicialize com o layout padrão de 10 mesas.
               </p>
 {canManageTables && (
@@ -787,14 +785,14 @@ export default function PosCounterPage() {
                 <button
                   type="button"
                   onClick={handleOpenCreateModal}
-                  className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+                  className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
                 >
                   <Plus className="w-4 h-4" />
                   <span>Cadastrar Mesa</span>
                 </button>
                 <button
                   onClick={handleSeedDefaults}
-                  className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 border border-[#E0DBD3] text-xs text-[#191817] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                  className="px-4 py-2 rounded-xl bg-white hover:bg-stone-50 border border-[#E0DBD3] text-sm text-[#191817] font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                   <span>Gerar Mesas 01 a 10</span>
@@ -806,13 +804,13 @@ export default function PosCounterPage() {
 
           {/* Caso filtros não encontrem nada */}
           {tables.length > 0 && filteredTables.length === 0 && (
-            <div className="py-16 text-center text-xs text-[#78716A]">
+            <div className="py-16 text-center text-sm text-[#6E6760]">
               Nenhuma mesa encontrada para o filtro ou busca selecionada.
             </div>
           )}
 
           {/* Grid de Mesas */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
             {filteredTables.map((table) => {
               const isSelected = selectedTable?.id === table.id;
               const isFree = table.status === 'free';
@@ -821,17 +819,6 @@ export default function PosCounterPage() {
               return (
                 <div
                   key={table.id}
-                  onClick={() => handleSelectTable(table)}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Mesa ${table.number}, ${tableStatusLabels[table.status] ?? table.status}`}
-                  aria-pressed={isSelected}
-                  onKeyDown={(e) => {
-                    if (e.key === ' ' || e.key === 'Enter') {
-                      e.preventDefault();
-                      handleSelectTable(table);
-                    }
-                  }}
                   className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between min-h-[160px] relative group focus:outline-none focus:ring-2 focus:ring-[#C84E1F] ${
                     isSelected
                       ? 'border-[#C84E1F] bg-white ring-2 ring-[#C84E1F]/20 shadow-md'
@@ -842,7 +829,14 @@ export default function PosCounterPage() {
                       : 'border-[#EAE6E1] bg-white hover:border-[#D4CEC5] hover:shadow-xs'
                   }`}
                 >
-                  <div>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectTable(table)}
+                    aria-label={`Mesa ${table.number}, ${tableStatusLabels[table.status] ?? table.status}`}
+                    aria-pressed={isSelected}
+                    className="absolute inset-0 z-0 rounded-2xl cursor-pointer"
+                  />
+                  <div className="pointer-events-none relative">
                     {/* Header do Card */}
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-1.5">
@@ -850,8 +844,8 @@ export default function PosCounterPage() {
                           Mesa {table.number}
                         </span>
                         {table.capacity && (
-                          <span className="text-[10px] text-[#78716A] flex items-center gap-0.5 font-medium">
-                            <Users className="w-3 h-3 text-[#A8A199]" />
+                          <span className="text-sm text-[#6E6760] flex items-center gap-0.5 font-medium">
+                            <Users className="w-3 h-3 text-[#6E6760]" />
                             {table.capacity}
                           </span>
                         )}
@@ -865,19 +859,19 @@ export default function PosCounterPage() {
                               handleClearWaiterCall(table.number);
                             }}
                             title="Clique para atender e dispensar chamado"
-                            className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse hover:bg-rose-600 hover:text-white transition-colors"
+                            className="text-sm font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse hover:bg-rose-600 hover:text-white transition-colors"
                           >
                             <Bell className="w-3 h-3" />
                             Garçom!
                           </button>
                         )}
                         <span
-                          className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
+                          className={`text-sm font-medium px-2 py-0.5 rounded-full ${
                             isBill
                               ? 'bg-amber-100 text-amber-800 border border-amber-200 font-semibold'
                               : isFree
-                              ? 'bg-stone-100 text-[#78716A]'
-                              : 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20 font-semibold'
+                              ? 'bg-stone-100 text-[#6E6760]'
+                              : 'bg-[#C84E1F]/10 text-[#9E3712] border border-[#C84E1F]/20 font-semibold'
                           }`}
                         >
                           {isBill ? 'Pede conta' : isFree ? 'Livre' : 'Ocupada'}
@@ -887,16 +881,16 @@ export default function PosCounterPage() {
 
                     {/* Informações Centrais */}
                     {!isFree ? (
-                      <div className="space-y-1 text-xs mt-3">
-                        <div className="flex items-center justify-between text-[#78716A]">
+                      <div className="space-y-1 text-sm mt-3">
+                        <div className="flex items-center justify-between text-[#6E6760]">
                           <span>Garçom</span>
                           <span className="text-[#191817] font-medium">{table.waiter}</span>
                         </div>
-                        <div className="flex items-center justify-between text-[#78716A]">
+                        <div className="flex items-center justify-between text-[#6E6760]">
                           <span>Aberta às</span>
                           <span className="text-[#191817]">{table.opened_at || 'Agora'}</span>
                         </div>
-                        <div className="flex items-center justify-between text-[#78716A]">
+                        <div className="flex items-center justify-between text-[#6E6760]">
                           <span>Itens lançados</span>
                           <span className="text-[#191817] font-medium">
                             {table.items_count || 0} itens
@@ -904,9 +898,9 @@ export default function PosCounterPage() {
                         </div>
                       </div>
                     ) : (
-                      <div className="py-4 text-center text-[#78716A] text-xs flex flex-col items-center justify-center gap-0.5">
+                      <div className="py-4 text-center text-[#6E6760] text-sm flex flex-col items-center justify-center gap-0.5">
                         <span className="font-medium text-[#44403C]">Mesa livre</span>
-                        <span className="text-[11px] text-[#A8A199]">
+                        <span className="text-sm text-[#6E6760]">
                           Capacidade: {table.capacity || 4} lugares
                         </span>
                       </div>
@@ -916,19 +910,19 @@ export default function PosCounterPage() {
                   {/* Rodapé do Card */}
                   {!isFree ? (
                     <div className="pt-2.5 mt-2.5 border-t border-[#EAE6E1] flex items-center justify-between">
-                      <span className="text-xs text-[#78716A]">Consumo:</span>
+                      <span className="text-sm text-[#6E6760]">Consumo:</span>
                       <span className="text-sm font-bold text-[#191817]">
                         {formatBRL((table.total || 0))}
                       </span>
                     </div>
                   ) : (
-                    <div className="pt-2 mt-2 flex items-center gap-1.5">
+                    <div className="relative pt-2 mt-2 flex items-center gap-1.5">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleOpenTable(table.number);
                         }}
-                        className="flex-1 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:bg-[#C84E1F] hover:border-[#C84E1F] hover:text-white text-xs text-[#191817] transition-colors cursor-pointer font-medium"
+                        className="flex-1 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:bg-[#C84E1F] hover:border-[#C84E1F] hover:text-white text-sm text-[#191817] transition-colors cursor-pointer font-medium"
                       >
                         + Abrir mesa
                       </button>
@@ -939,7 +933,7 @@ export default function PosCounterPage() {
                           handleOpenEditModal(table);
                         }}
                         title="Editar mesa"
-                        className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#78716A] hover:text-[#191817] transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#6E6760] hover:text-[#191817] transition-colors cursor-pointer"
                       >
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
@@ -949,7 +943,7 @@ export default function PosCounterPage() {
                           handleDeleteTable(table);
                         }}
                         title="Excluir mesa"
-                        className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-rose-300 hover:text-rose-600 text-[#78716A] transition-colors cursor-pointer"
+                        className="p-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-rose-300 hover:text-rose-600 text-[#6E6760] transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -978,10 +972,10 @@ export default function PosCounterPage() {
                             Mesa {selectedTable.number}
                           </h2>
                           <span
-                            className={`text-xs px-2.5 py-0.5 rounded-full font-medium ${
+                            className={`text-sm px-2.5 py-0.5 rounded-full font-medium ${
                               selectedTable.status === 'bill_requested'
                                 ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                : 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20 font-semibold'
+                                : 'bg-[#C84E1F]/10 text-[#9E3712] border border-[#C84E1F]/20 font-semibold'
                             }`}
                           >
                             {selectedTable.status === 'bill_requested'
@@ -989,7 +983,7 @@ export default function PosCounterPage() {
                               : 'Comanda ativa'}
                           </span>
                         </div>
-                        <p className="text-xs text-[#78716A] mt-1">
+                        <p className="text-sm text-[#6E6760] mt-1">
                           Atendente: <strong className="text-[#191817]">{selectedTable.waiter}</strong>{' '}
                           • Aberta às {selectedTable.opened_at || 'Agora'}
                         </p>
@@ -999,7 +993,7 @@ export default function PosCounterPage() {
                         <Link
                           href={`/table/${selectedTable.number}`}
                           target="_blank"
-                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#78716A] hover:text-[#191817] transition-colors shadow-2xs"
+                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#6E6760] hover:text-[#191817] transition-colors shadow-2xs"
                           title="Abrir tablet do cliente"
                         >
                           <Smartphone className="w-4 h-4" />
@@ -1010,13 +1004,13 @@ export default function PosCounterPage() {
                     {/* Alerta de Garçom se acionado */}
                     {selectedTable.waiter_called && (
                       <div className="mt-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs text-rose-800">
+                        <div className="flex items-center gap-2 text-sm text-rose-800">
                           <Bell className="w-4 h-4 text-rose-600 animate-bounce" />
                           <span>Cliente solicitou atendimento no salão</span>
                         </div>
                         <button
                           onClick={() => handleClearWaiterCall(selectedTable.number)}
-                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-semibold transition-colors cursor-pointer"
+                          className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition-colors cursor-pointer"
                         >
                           Atender
                         </button>
@@ -1027,12 +1021,12 @@ export default function PosCounterPage() {
                   {/* Lista de Itens Lançados */}
                   <div className="py-4">
                     <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-semibold text-[#191817]">
+                      <span className="text-sm font-semibold text-[#191817]">
                         Itens consumidos ({selectedTable.items?.length || 0})
                       </span>
                       <button
                         onClick={() => setShowAddModal(true)}
-                        className="text-xs text-[#C84E1F] hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                        className="text-sm text-[#9E3712] hover:underline flex items-center gap-1 font-semibold cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Lançar item</span>
@@ -1041,7 +1035,7 @@ export default function PosCounterPage() {
 
                     <div className="space-y-2.5 max-h-[280px] overflow-y-auto pr-1">
                       {(!selectedTable.items || selectedTable.items.length === 0) && (
-                        <div className="py-8 text-center text-xs text-[#A8A199]">
+                        <div className="py-8 text-center text-sm text-[#6E6760]">
                           Nenhum item lançado ainda nesta mesa.
                         </div>
                       )}
@@ -1049,28 +1043,28 @@ export default function PosCounterPage() {
                       {(selectedTable.items || []).map((item) => (
                         <div
                           key={item.id}
-                          className="p-3 rounded-xl bg-[#FAF8F5] border border-[#EAE6E1] flex items-start justify-between text-xs"
+                          className="p-3 rounded-xl bg-[#FAF8F5] border border-[#EAE6E1] flex items-start justify-between text-sm"
                         >
                           <div className="flex-1 pr-2">
                             <div className="flex items-center gap-1.5 font-medium text-[#191817]">
-                              <span className="font-bold text-[#C84E1F]">{item.quantity}x</span>
+                              <span className="font-bold text-[#9E3712]">{item.quantity}x</span>
                               <span>{item.name}</span>
                             </div>
                             {item.notes && (
-                              <p className="text-[11px] text-[#78716A] mt-0.5 pl-5">
+                              <p className="text-sm text-[#6E6760] mt-0.5 pl-5">
                                 {/^(Obs|Ponto|Extras):/.test(item.notes) ? item.notes : `Obs: ${item.notes}`}
                               </p>
                             )}
                             <div className="mt-1 pl-5">
                               <span
-                                className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
+                                className={`text-sm px-2 py-0.5 rounded-full font-medium ${
                                   item.status === 'delivered'
                                     ? 'bg-stone-100 text-[#44403C] border border-stone-200 font-semibold'
                                     : item.status === 'ready'
                                     ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
                                     : item.status === 'preparing'
-                                    ? 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20'
-                                    : 'bg-stone-100 text-[#78716A]'
+                                    ? 'bg-[#C84E1F]/10 text-[#9E3712] border border-[#C84E1F]/20'
+                                    : 'bg-stone-100 text-[#6E6760]'
                                 }`}
                               >
                                 {item.status === 'delivered'
@@ -1088,7 +1082,7 @@ export default function PosCounterPage() {
                             <span className="font-bold text-[#191817]">
                               {formatBRL((item.price * item.quantity))}
                             </span>
-                            <p className="text-[10px] text-[#78716A]">
+                            <p className="text-sm text-[#6E6760]">
                               {formatBRL(item.price)} un
                             </p>
                           </div>
@@ -1101,26 +1095,26 @@ export default function PosCounterPage() {
                 {/* Fechamento Financeiro & Meios de Pagamento */}
                 <div className="pt-4 border-t border-[#EAE6E1] space-y-4">
                   {/* Resumo Financeiro */}
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex justify-between text-[#78716A]">
+                  <div className="space-y-1.5 text-sm">
+                    <div className="flex justify-between text-[#6E6760]">
                       <span>Subtotal dos itens</span>
                       <span>{formatBRL(subtotal)}</span>
                     </div>
 
                     {adjustment !== 0 && (
-                      <div className="flex justify-between text-[#78716A]">
+                      <div className="flex justify-between text-[#6E6760]">
                         <span>Taxas e descontos da comanda</span>
                         <span>{formatBRL(adjustment)}</span>
                       </div>
                     )}
 
-                    <div className="flex justify-between items-center text-[#78716A]">
+                    <div className="flex justify-between items-center text-[#6E6760]">
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input
                           type="checkbox"
                           checked={includeService}
                           onChange={(e) => setIncludeService(e.target.checked)}
-                          className="rounded border-[#E0DBD3] text-[#C84E1F] focus:ring-0 bg-[#FAF8F5]"
+                          className="rounded border-[#E0DBD3] text-[#9E3712] focus:ring-0 bg-[#FAF8F5]"
                         />
                         <span>Serviço garçom (10%)</span>
                       </label>
@@ -1129,7 +1123,7 @@ export default function PosCounterPage() {
 
                     <div className="flex justify-between text-base font-bold text-[#191817] pt-2 border-t border-[#EAE6E1]">
                       <span>Total da conta</span>
-                      <span className="text-[#C84E1F]">
+                      <span className="text-[#9E3712]">
                         {formatBRL(grandTotal)}
                       </span>
                     </div>
@@ -1137,14 +1131,14 @@ export default function PosCounterPage() {
 
                   {/* Formas de Pagamento Rápido */}
                   <div>
-                    <span className="text-[11px] text-[#78716A] block mb-2 font-medium">
+                    <span className="text-sm text-[#6E6760] block mb-2 font-medium">
                       Meio de recebimento
                     </span>
-                    <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="grid grid-cols-3 gap-2 text-sm">
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('pix')}
-                        className={`py-2 px-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                        className={`py-2 px-2 rounded-xl border text-sm font-medium transition-colors cursor-pointer ${
                           paymentMethod === 'pix'
                             ? 'bg-[#C84E1F] border-[#C84E1F] text-white font-semibold shadow-xs'
                             : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
@@ -1157,7 +1151,7 @@ export default function PosCounterPage() {
                         onClick={() => setPaymentMethod('credit_card')}
                         disabled={!isStripeConfigured}
                         title={isStripeConfigured ? undefined : 'Pagamento com cartão não configurado neste ambiente'}
-                        className={`py-2 px-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                        className={`py-2 px-2 rounded-xl border text-sm font-medium transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
                           paymentMethod === 'credit_card'
                             ? 'bg-[#C84E1F] border-[#C84E1F] text-white font-semibold shadow-xs'
                             : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
@@ -1168,7 +1162,7 @@ export default function PosCounterPage() {
                       <button
                         type="button"
                         onClick={() => setPaymentMethod('cash')}
-                        className={`py-2 px-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                        className={`py-2 px-2 rounded-xl border text-sm font-medium transition-colors cursor-pointer ${
                           paymentMethod === 'cash'
                             ? 'bg-[#C84E1F] border-[#C84E1F] text-white font-semibold shadow-xs'
                             : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
@@ -1184,7 +1178,7 @@ export default function PosCounterPage() {
                     <button
                       onClick={() => handleCloseTable(selectedTable.number)}
                       disabled={isClosing}
-                      className="py-3 px-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                      className="py-3 px-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
                     >
                       <CreditCard className="w-3.5 h-3.5" />
                       <span>{isClosing ? 'Baixando...' : 'Fechar mesa'}</span>
@@ -1192,7 +1186,7 @@ export default function PosCounterPage() {
 
                     <button
                       onClick={() => window.print()}
-                      className="py-3 px-3 rounded-xl bg-[#FAF8F5] hover:bg-stone-100 text-[#191817] border border-[#E0DBD3] font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                      className="py-3 px-3 rounded-xl bg-[#FAF8F5] hover:bg-stone-100 text-[#191817] border border-[#E0DBD3] font-medium text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                     >
                       <Printer className="w-3.5 h-3.5" />
                       <span>Imprimir</span>
@@ -1204,7 +1198,7 @@ export default function PosCounterPage() {
                   <div className="pt-2 flex justify-center">
                     <button
                       onClick={() => handleResetTable(selectedTable.number)}
-                      className="text-[11px] text-[#78716A] hover:text-rose-600 flex items-center gap-1 transition-colors cursor-pointer"
+                      className="text-sm text-[#6E6760] hover:text-rose-600 flex items-center gap-1 transition-colors cursor-pointer"
                     >
                       <AlertTriangle className="w-3 h-3" />
                       <span>Forçar liberação da mesa</span>
@@ -1223,7 +1217,7 @@ export default function PosCounterPage() {
                         <h2 className="text-xl font-bold text-[#191817]">
                           Mesa {selectedTable.number}
                         </h2>
-                        <span className="inline-block mt-1 text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
+                        <span className="inline-block mt-1 text-sm px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-medium">
                           Mesa Livre • Disponível
                         </span>
                       </div>
@@ -1233,14 +1227,14 @@ export default function PosCounterPage() {
                         <button
                           onClick={() => handleOpenEditModal(selectedTable)}
                           title="Editar capacidade/número"
-                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#78716A] hover:text-[#191817] transition-colors cursor-pointer shadow-2xs"
+                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#191817] text-[#6E6760] hover:text-[#191817] transition-colors cursor-pointer shadow-2xs"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => handleDeleteTable(selectedTable)}
                           title="Excluir mesa do salão"
-                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-rose-300 hover:text-rose-600 text-[#78716A] transition-colors cursor-pointer shadow-2xs"
+                          className="p-2 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] hover:border-rose-300 hover:text-rose-600 text-[#6E6760] transition-colors cursor-pointer shadow-2xs"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1251,20 +1245,20 @@ export default function PosCounterPage() {
 
                   <div className="py-6 space-y-4">
                     <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE6E1] space-y-2">
-                      <div className="flex justify-between text-xs text-[#78716A]">
+                      <div className="flex justify-between text-sm text-[#6E6760]">
                         <span>Capacidade de pessoas:</span>
                         <strong className="text-[#191817] flex items-center gap-1">
-                          <Users className="w-3.5 h-3.5 text-[#C84E1F]" />
+                          <Users className="w-3.5 h-3.5 text-[#9E3712]" />
                           {selectedTable.capacity || 4} lugares
                         </strong>
                       </div>
-                      <div className="flex justify-between text-xs text-[#78716A]">
+                      <div className="flex justify-between text-sm text-[#6E6760]">
                         <span>Identificação no salão:</span>
                         <strong className="text-[#191817]">
                           {selectedTable.raw_number || `Mesa ${selectedTable.number}`}
                         </strong>
                       </div>
-                      <div className="flex justify-between text-xs text-[#78716A]">
+                      <div className="flex justify-between text-sm text-[#6E6760]">
                         <span>Status atual:</span>
                         <strong className="text-emerald-700">Livre para receber clientes</strong>
                       </div>
@@ -1272,17 +1266,17 @@ export default function PosCounterPage() {
 
                     <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE6E1] flex items-center justify-between">
                       <div className="space-y-0.5">
-                        <p className="text-xs font-semibold text-[#191817]">Cardápio do Tablet</p>
-                        <p className="text-[11px] text-[#78716A]">
+                        <p className="text-sm font-semibold text-[#191817]">Cardápio do Tablet</p>
+                        <p className="text-sm text-[#6E6760]">
                           Simule a visão do cliente nesta mesa
                         </p>
                       </div>
                       <Link
                         href={`/table/${selectedTable.number}`}
                         target="_blank"
-                        className="px-3 py-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:border-[#C84E1F] text-xs font-medium text-[#191817] flex items-center gap-1.5 transition-colors shadow-2xs"
+                        className="px-3 py-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:border-[#C84E1F] text-sm font-medium text-[#191817] flex items-center gap-1.5 transition-colors shadow-2xs"
                       >
-                        <Smartphone className="w-3.5 h-3.5 text-[#C84E1F]" />
+                        <Smartphone className="w-3.5 h-3.5 text-[#9E3712]" />
                         <span>Abrir</span>
                       </Link>
                     </div>
@@ -1292,14 +1286,14 @@ export default function PosCounterPage() {
                 <div className="pt-4 border-t border-[#EAE6E1] space-y-3">
                   <button
                     onClick={() => handleOpenTable(selectedTable.number)}
-                    className="w-full py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
+                    className="w-full py-3 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer shadow-xs"
                   >
                     <Plus className="w-4 h-4" />
                     <span>Abrir Comanda no Salão</span>
                   </button>
 
 {canManageTables && (
-                  <div className="flex items-center justify-between text-xs text-[#78716A] px-1">
+                  <div className="flex items-center justify-between text-sm text-[#6E6760] px-1">
                     <button
                       onClick={() => handleOpenEditModal(selectedTable)}
                       className="hover:text-[#191817] flex items-center gap-1 cursor-pointer"
@@ -1320,14 +1314,14 @@ export default function PosCounterPage() {
               </div>
             )
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center text-center text-[#78716A] p-6">
-              <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] border border-[#E0DBD3] flex items-center justify-center text-[#A8A199] mb-3 shadow-2xs">
+            <div className="flex-1 flex flex-col items-center justify-center text-center text-[#6E6760] p-6">
+              <div className="w-12 h-12 rounded-2xl bg-[#FAF8F5] border border-[#E0DBD3] flex items-center justify-center text-[#6E6760] mb-3 shadow-2xs">
                 <LayoutGrid className="w-6 h-6" />
               </div>
               <h3 className="text-sm font-semibold text-[#191817] mb-1">
                 Nenhuma mesa selecionada
               </h3>
-              <p className="text-xs text-[#78716A] max-w-xs mb-4">
+              <p className="text-sm text-[#6E6760] max-w-xs mb-4">
                 Selecione uma mesa no mapa para abrir comanda, consultar itens, gerenciar lugares ou
                 registrar pagamentos.
               </p>
@@ -1335,9 +1329,9 @@ export default function PosCounterPage() {
               <button
                 type="button"
                 onClick={handleOpenCreateModal}
-                className="px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#C84E1F] text-[#191817] text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                className="px-3.5 py-1.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] hover:border-[#C84E1F] text-[#191817] text-sm font-medium flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
               >
-                <Plus className="w-3.5 h-3.5 text-[#C84E1F]" />
+                <Plus className="w-3.5 h-3.5 text-[#9E3712]" />
                 <span>Cadastrar nova mesa</span>
               </button>
 )}
@@ -1348,10 +1342,7 @@ export default function PosCounterPage() {
 
       {/* MODAL 1: Cadastrar Nova Mesa */}
       {showCreateModal && (
-        <div
-          onClick={() => setShowCreateModal(false)}
-          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-        >
+        <Modal isOpen={showCreateModal} title="Cadastrar Nova Mesa" isBusy={isCreatingTable} onClose={() => setShowCreateModal(false)}>
           <form
             onClick={(e) => e.stopPropagation()}
             onSubmit={handleCreateTable}
@@ -1359,22 +1350,23 @@ export default function PosCounterPage() {
           >
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE6E1]">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#C84E1F]/10 flex items-center justify-center text-[#C84E1F]">
+                <div className="w-8 h-8 rounded-lg bg-[#C84E1F]/10 flex items-center justify-center text-[#9E3712]">
                   <Plus className="w-4 h-4" />
                 </div>
                 <h3 className="text-base font-semibold text-[#191817]">Cadastrar Nova Mesa</h3>
               </div>
-              <button
+              <button aria-label="Fechar janela"
                 type="button"
+                disabled={isCreatingTable}
                 onClick={() => setShowCreateModal(false)}
-                className="p-1 rounded-lg text-[#78716A] hover:text-[#191817] cursor-pointer"
+                className="p-1 rounded-lg text-[#6E6760] hover:text-[#191817] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {createError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+              <div role="alert" className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
                 <span>{createError}</span>
               </div>
@@ -1382,27 +1374,27 @@ export default function PosCounterPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-xs text-[#44403C] block mb-1.5 font-medium">
+                <label className="text-sm text-[#44403C] block mb-1.5 font-medium" htmlFor="counter-field-1">
                   Número ou identificação da mesa
                 </label>
-                <input
+                <input id="counter-field-1"
                   type="text"
                   maxLength={30}
                   placeholder="Ex: 11, 12, 15..."
                   inputMode="numeric"
                   value={newTableNumber}
                   onChange={(e) => setNewTableNumber(e.target.value.slice(0, 30))}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                   required
-                  autoFocus
+                  data-autofocus
                 />
-                <span className="text-[10px] text-[#78716A] mt-1 block">
+                <span className="text-sm text-[#6E6760] mt-1 block">
                   Ex: Se digitar &quot;11&quot;, ficará &quot;Mesa 11&quot; no sistema e tablet.
                 </span>
               </div>
 
               <div>
-                <label className="text-xs text-[#44403C] block mb-1.5 font-medium">
+                <label className="text-sm text-[#44403C] block mb-1.5 font-medium" htmlFor="counter-field-2">
                   Capacidade de lugares (pessoas)
                 </label>
                 <div className="grid grid-cols-4 gap-2 mb-2">
@@ -1411,7 +1403,7 @@ export default function PosCounterPage() {
                       key={cap}
                       type="button"
                       onClick={() => setNewTableCapacity(cap)}
-                      className={`py-2 rounded-xl border text-xs font-medium transition-colors cursor-pointer ${
+                      className={`py-2 rounded-xl border text-sm font-medium transition-colors cursor-pointer ${
                         newTableCapacity === cap
                           ? 'bg-[#C84E1F] border-[#C84E1F] text-white font-semibold shadow-xs'
                           : 'bg-[#FAF8F5] border-[#E0DBD3] text-[#191817] hover:border-[#C84E1F]'
@@ -1421,13 +1413,13 @@ export default function PosCounterPage() {
                     </button>
                   ))}
                 </div>
-                <input
+                <input id="counter-field-2"
                   type="number"
                   min="1"
                   max="50"
                   value={newTableCapacity}
                   onChange={(e) => setNewTableCapacity(parseInt(e.target.value) || 1)}
-                  className="w-full p-2 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                  className="w-full p-2 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                 />
               </div>
             </div>
@@ -1435,26 +1427,27 @@ export default function PosCounterPage() {
             <div className="pt-3 border-t border-[#EAE6E1] flex gap-2 justify-end">
               <button
                 type="button"
+                disabled={isCreatingTable}
                 onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs text-[#57534E] font-medium transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-sm text-[#57534E] font-medium transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isCreatingTable}
-                className="px-5 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                className="px-5 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 {isCreatingTable ? 'Criando...' : 'Salvar Mesa'}
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 2: Editar Capacidade da Mesa */}
       {showEditModal && selectedTable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+        <Modal isOpen={showEditModal} title={`Editar Mesa ${selectedTable.number}`} isBusy={isSavingEdit} onClose={() => setShowEditModal(false)}>
           <form
             onSubmit={handleSaveEditTable}
             className="w-full max-w-sm bg-white border border-[#EAE6E1] rounded-2xl p-6 shadow-xl space-y-4"
@@ -1463,10 +1456,11 @@ export default function PosCounterPage() {
               <h3 className="text-base font-semibold text-[#191817]">
                 Editar Mesa {selectedTable.number}
               </h3>
-              <button
+              <button aria-label="Fechar janela"
                 type="button"
+                disabled={isSavingEdit}
                 onClick={() => setShowEditModal(false)}
-                className="p-1 rounded-lg text-[#78716A] hover:text-[#191817] cursor-pointer"
+                className="p-1 rounded-lg text-[#6E6760] hover:text-[#191817] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1474,26 +1468,26 @@ export default function PosCounterPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-[#44403C] block mb-1">Identificação / Número</label>
-                <input
+                <label className="text-sm font-medium text-[#44403C] block mb-1" htmlFor="counter-field-3">Identificação / Número</label>
+                <input id="counter-field-3"
                   type="text"
                   maxLength={30}
                   value={editingTableNumber}
                   onChange={(e) => setEditingTableNumber(e.target.value.slice(0, 30))}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                   required
                 />
               </div>
 
               <div>
-                <label className="text-xs font-medium text-[#44403C] block mb-1">Capacidade (Lugares)</label>
-                <input
+                <label className="text-sm font-medium text-[#44403C] block mb-1" htmlFor="counter-field-4">Capacidade (Lugares)</label>
+                <input id="counter-field-4"
                   type="number"
                   min="1"
                   max="50"
                   value={editingTableCapacity}
                   onChange={(e) => setEditingTableCapacity(parseInt(e.target.value) || 1)}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                   required
                 />
               </div>
@@ -1502,34 +1496,36 @@ export default function PosCounterPage() {
             <div className="pt-3 border-t border-[#EAE6E1] flex gap-2 justify-end">
               <button
                 type="button"
+                disabled={isSavingEdit}
                 onClick={() => setShowEditModal(false)}
-                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs text-[#57534E] font-medium transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-sm text-[#57534E] font-medium transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
                 disabled={isSavingEdit}
-                className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 {isSavingEdit ? 'Salvando...' : 'Salvar Alterações'}
               </button>
             </div>
           </form>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 3: Lançar Item na Comanda */}
       {showAddModal && selectedTable && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+        <Modal isOpen={showAddModal} title={`Lançar item na Mesa ${selectedTable.number}`} isBusy={isAddingItem} onClose={() => setShowAddModal(false)}>
           <div className="w-full max-w-md bg-white border border-[#EAE6E1] rounded-2xl p-6 shadow-xl space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-[#EAE6E1]">
               <h3 className="text-base font-semibold text-[#191817]">
                 Lançar item na Mesa {selectedTable.number}
               </h3>
-              <button
+              <button aria-label="Fechar janela"
+                disabled={isAddingItem}
                 onClick={() => setShowAddModal(false)}
-                className="p-1 rounded-lg text-[#78716A] hover:text-[#191817] cursor-pointer"
+                className="p-1 rounded-lg text-[#6E6760] hover:text-[#191817] cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1537,11 +1533,11 @@ export default function PosCounterPage() {
 
             <div className="space-y-3">
               <div>
-                <label className="text-xs font-medium text-[#44403C] block mb-1">Selecione o produto</label>
-                <select
+                <label className="text-sm font-medium text-[#44403C] block mb-1" htmlFor="counter-field-5">Selecione o produto</label>
+                <select id="counter-field-5"
                   value={selectedProductId || ''}
                   onChange={(e) => setSelectedProductId(Number(e.target.value))}
-                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                  className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                 >
                   <option value="">Escolha um prato ou bebida...</option>
                   {products.map((prod) => (
@@ -1551,10 +1547,10 @@ export default function PosCounterPage() {
                   ))}
                 </select>
                 {products.length === 0 && (
-                  <p className="text-[11px] text-[#78716A] mt-1.5">
+                  <p className="text-sm text-[#6E6760] mt-1.5">
                     Nenhum prato à venda.{' '}
                     {canManageTables ? (
-                      <Link href="/menu" className="text-[#C84E1F] font-semibold hover:underline">Cadastrar no cardápio</Link>
+                      <Link href="/menu" className="text-[#9E3712] font-semibold hover:underline">Cadastrar no cardápio</Link>
                     ) : (
                       'Peça à gerência para cadastrar o cardápio.'
                     )}
@@ -1564,24 +1560,24 @@ export default function PosCounterPage() {
 
               <div className="flex gap-3">
                 <div className="w-1/3">
-                  <label className="text-xs font-medium text-[#44403C] block mb-1">Quantidade</label>
-                  <input
+                  <label className="text-sm font-medium text-[#44403C] block mb-1" htmlFor="counter-field-6">Quantidade</label>
+                  <input id="counter-field-6"
                     type="number"
                     min="1"
                     value={addItemQuantity}
                     onChange={(e) => setAddItemQuantity(Math.max(1, parseInt(e.target.value) || 1))}
-                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                   />
                 </div>
                 <div className="w-2/3">
-                  <label className="text-xs font-medium text-[#44403C] block mb-1">Observações (opcional)</label>
-                  <input
+                  <label className="text-sm font-medium text-[#44403C] block mb-1" htmlFor="counter-field-7">Observações (opcional)</label>
+                  <input id="counter-field-7"
                     type="text"
                     maxLength={100}
                     placeholder="Ex: ao ponto, sem gelo..."
                     value={addItemNotes}
                     onChange={(e) => setAddItemNotes(e.target.value.slice(0, 100))}
-                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
+                    className="w-full p-2.5 rounded-xl bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F] focus:bg-white"
                   />
                 </div>
               </div>
@@ -1590,8 +1586,9 @@ export default function PosCounterPage() {
             <div className="pt-3 border-t border-[#EAE6E1] flex gap-2 justify-end">
               <button
                 type="button"
+                disabled={isAddingItem}
                 onClick={() => setShowAddModal(false)}
-                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs text-[#57534E] font-medium transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-sm text-[#57534E] font-medium transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1599,21 +1596,18 @@ export default function PosCounterPage() {
                 type="button"
                 onClick={handleAddItemToComanda}
                 disabled={!selectedProductId || isAddingItem}
-                className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
+                className="px-4 py-2 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white text-sm font-semibold transition-colors cursor-pointer disabled:opacity-50 shadow-xs"
               >
                 {isAddingItem ? 'Lançando...' : 'Confirmar lançamento'}
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* MODAL 4: Confirmação Customizada Elegante */}
       {confirmModal && (
-        <div
-          onClick={() => setConfirmModal(null)}
-          className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/40 backdrop-blur-xs p-4"
-        >
+        <Modal isOpen={!!confirmModal} title={confirmModal.title} onClose={() => setConfirmModal(null)}>
           <div
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm bg-white border border-[#EAE6E1] rounded-2xl p-6 shadow-xl space-y-4 animate-in fade-in zoom-in-95 duration-200"
@@ -1623,14 +1617,14 @@ export default function PosCounterPage() {
                 className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                   confirmModal.isDestructive
                     ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                    : 'bg-[#C84E1F]/10 text-[#C84E1F] border border-[#C84E1F]/20'
+                    : 'bg-[#C84E1F]/10 text-[#9E3712] border border-[#C84E1F]/20'
                 }`}
               >
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="text-sm font-semibold text-[#191817]">{confirmModal.title}</h3>
-                <p className="text-xs text-[#78716A] mt-0.5 leading-relaxed">{confirmModal.message}</p>
+                <p className="text-sm text-[#6E6760] mt-0.5 leading-relaxed">{confirmModal.message}</p>
               </div>
             </div>
 
@@ -1638,7 +1632,7 @@ export default function PosCounterPage() {
               <button
                 type="button"
                 onClick={() => setConfirmModal(null)}
-                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-xs text-[#57534E] font-medium transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-stone-100 hover:bg-stone-200 text-sm text-[#57534E] font-medium transition-colors cursor-pointer"
               >
                 Cancelar
               </button>
@@ -1649,7 +1643,7 @@ export default function PosCounterPage() {
                   setConfirmModal(null);
                   await action();
                 }}
-                className={`px-4 py-2 rounded-xl text-xs font-semibold text-white transition-colors cursor-pointer shadow-xs ${
+                className={`px-4 py-2 rounded-xl text-sm font-semibold text-white transition-colors cursor-pointer shadow-xs ${
                   confirmModal.isDestructive
                     ? 'bg-rose-600 hover:bg-rose-700'
                     : 'bg-[#C84E1F] hover:bg-[#B34217]'
@@ -1659,7 +1653,7 @@ export default function PosCounterPage() {
               </button>
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {selectedTable && (
@@ -1680,7 +1674,7 @@ export default function PosCounterPage() {
 
       {/* Pré-conta impressa: só aparece na impressão ("Imprimir" no painel da mesa) */}
       {selectedTable && (
-        <section aria-hidden="true" className="hidden print:block p-6 text-black font-mono text-xs max-w-[80mm]">
+        <section aria-hidden="true" className="hidden print:block p-6 text-black font-mono text-sm max-w-[80mm]">
           <p className="text-center text-base font-bold">{activeRestaurant?.name ?? 'ELO Gastronomia'}</p>
           <p className="text-center mb-3">Pré-conta • Mesa {selectedTable.number}</p>
           <p>Aberta às {selectedTable.opened_at ?? '—'}</p>

@@ -85,7 +85,7 @@ export default function TabletSetupPage() {
 
   if (checkingStorage) {
     return (
-      <div className="min-h-screen bg-[#F9F8F6] flex flex-col items-center justify-center p-6 text-center">
+      <div className="elo-interface min-h-screen bg-[#F9F8F6] flex flex-col items-center justify-center p-6 text-center">
         <div className="w-12 h-12 rounded-2xl bg-white border border-[#EAE6E1] flex items-center justify-center mb-4 shadow-sm animate-pulse">
           <Tablet className="w-6 h-6 text-[#C84E1F]" />
         </div>
@@ -101,12 +101,12 @@ export default function TabletSetupPage() {
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="text-xs text-[#6E6760] font-normal border-l border-[#D8D2C9] pl-3">
+            <span className="text-sm text-[#6E6760] font-normal border-l border-[#D8D2C9] pl-3">
               Configuração do Dispositivo
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 text-xs text-[#9E3712] font-semibold bg-[#C84E1F]/15 px-3 py-1 rounded-full">
+          <div className="flex items-center gap-1.5 text-sm text-[#9E3712] font-semibold bg-[#C84E1F]/15 px-3 py-1 rounded-full">
             <ShieldCheck className="w-3.5 h-3.5" />
             <span>Modo Kiosk / Setup</span>
           </div>
@@ -122,7 +122,7 @@ export default function TabletSetupPage() {
             </div>
             <div>
               <h1 className="text-xl font-bold text-[#191817]">Vincular Tablet à Mesa</h1>
-              <p className="text-xs text-[#6E6760]">
+              <p className="text-sm text-[#6E6760]">
                 Defina a qual mesa este tablet pertence no salão
               </p>
             </div>
@@ -131,7 +131,7 @@ export default function TabletSetupPage() {
           <form onSubmit={handleSaveTabletConfig} className="space-y-6">
             {/* Mensagem de Erro */}
             {errorMsg && (
-              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+              <div className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
@@ -140,13 +140,13 @@ export default function TabletSetupPage() {
             {/* Seleção da Mesa */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#191817]">
+                <label className="text-sm font-bold uppercase tracking-wider text-[#191817]">
                   Número da Mesa
                 </label>
                 <button
                   type="button"
                   onClick={() => setIsCustom(!isCustom)}
-                  className="text-xs text-[#C84E1F] hover:underline"
+                  className="text-sm text-[#C84E1F] hover:underline"
                 >
                   {isCustom ? 'Escolher da lista' : 'Digitar número manual'}
                 </button>
@@ -156,7 +156,7 @@ export default function TabletSetupPage() {
                 <div>
                   <div className="grid grid-cols-4 gap-2 max-h-48 overflow-y-auto p-1 border border-[#EAE6E1] rounded-2xl bg-[#F9F8F6]">
                     {!loadingTables && availableTables.length === 0 && (
-                      <p className="col-span-4 py-4 text-center text-xs text-[#6E6760]">
+                      <p className="col-span-4 py-4 text-center text-sm text-[#6E6760]">
                         Nenhuma mesa disponível para seleção.
                       </p>
                     )}
@@ -180,7 +180,7 @@ export default function TabletSetupPage() {
                     })}
                   </div>
                   {loadingTables && (
-                    <p className="text-[11px] text-[#6E6760] mt-1 flex items-center gap-1">
+                    <p className="text-sm text-[#6E6760] mt-1 flex items-center gap-1">
                       <RefreshCw className="w-3 h-3 animate-spin" /> Carregando mesas do salão...
                     </p>
                   )}
@@ -200,7 +200,7 @@ export default function TabletSetupPage() {
 
             {/* Autorização da Gerência */}
             <fieldset className="space-y-2">
-              <legend className="text-xs font-bold uppercase tracking-wider text-[#191817] mb-2">
+              <legend className="text-sm font-bold uppercase tracking-wider text-[#191817] mb-2">
                 Autorização da gerência
               </legend>
               <input
@@ -223,7 +223,7 @@ export default function TabletSetupPage() {
                 className="w-full px-4 py-3 rounded-xl border border-[#EAE6E1] bg-[#F9F8F6] text-sm text-[#191817] focus:outline-none focus:border-[#C84E1F]"
                 required
               />
-              <p className="text-[11px] text-[#6E6760]">
+              <p className="text-sm text-[#6E6760]">
                 Necessário para evitar que clientes alterem a numeração da mesa. A sessão não fica salva no tablet.
               </p>
             </fieldset>
@@ -242,7 +242,7 @@ export default function TabletSetupPage() {
       </main>
 
       {/* Rodapé Informativo */}
-      <footer className="border-t border-[#EAE6E1] py-4 px-6 text-center text-xs text-[#6E6760]">
+      <footer className="border-t border-[#EAE6E1] py-4 px-6 text-center text-sm text-[#6E6760]">
         ELO Gastronomia • Sistema de Autoatendimento & Totem
       </footer>
     </div>

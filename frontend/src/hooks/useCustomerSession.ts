@@ -69,6 +69,7 @@ export function useCustomerSession(tableId: string | number) {
   };
 
   const fetchSessionData = useCallback(async (isSilent = false) => {
+    if (!isSilent) setLoading(true);
     try {
       const [catRes, prodRes, tableRes] = await Promise.all([
         api.get('/categories', { params: { active: 1 } }),

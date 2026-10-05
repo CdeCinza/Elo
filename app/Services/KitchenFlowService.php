@@ -61,15 +61,23 @@ class KitchenFlowService
      * Avança para $targetStatus os itens que estão em $fromStage (ou, sem ele, no estágio atual do pedido).
      * Itens que entram em preparo têm o estoque baixado sem bloquear a cozinha.
      *
+     * @param  list<int>|null  $itemIds
+     *
      * @throws InvalidArgumentException
      */
-    public function advance(Order $order, string $targetStatus, ?int $userId, ?string $fromStage = null): void
+    public function advance(Order $order, string $targetStatus, ?int $userId, ?string $fromStage = null, ?array $itemIds = null): void
     {
         if (in_array($order->status, ['delivered', 'canceled'], true)) {
             throw new InvalidArgumentException('Transição de status inválida.');
         }
 
         $items = $order->items()->get();
+        if ($itemIds !== null) {
+            $items = $items->whereIn('id', $itemIds)->values();
+            if ($items->count() !== count($itemIds)) {
+                throw new InvalidArgumentException('Os itens selecionados não pertencem a esta comanda.');
+            }
+        }
         $currentStage = $fromStage ?? $this->aggregateStage($items);
         $nextStage = self::STAGES[$this->stageIndex($currentStage) + 1] ?? null;
 
@@ -78,6 +86,9 @@ class KitchenFlowService
         }
 
         $advancingItems = $items->where('status', $currentStage)->values();
+        if ($itemIds !== null && $advancingItems->count() !== count($itemIds)) {
+            throw new InvalidArgumentException('Os itens selecionados mudaram de etapa. Atualize a fila e tente novamente.');
+        }
 
         if ($targetStatus === 'preparing') {
             $this->stockService->deductForItems($advancingItems, $userId, enforceAvailability: false);

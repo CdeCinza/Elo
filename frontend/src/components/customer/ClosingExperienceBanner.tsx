@@ -25,7 +25,7 @@ export const ClosingExperienceBanner: React.FC = () => {
             <h3 className="font-editorial text-base sm:text-lg font-normal text-[#F9F8F6]">
               Atenção a cada detalhe do preparo.
             </h3>
-            <p className="text-xs text-[#EAE6E1]/70">
+            <p className="text-sm text-[#EAE6E1]/70">
               Caso deseje qualquer ajuste em seu pedido, solicite a nossa equipe pelo botão de garçom.
             </p>
           </div>
@@ -33,7 +33,7 @@ export const ClosingExperienceBanner: React.FC = () => {
 
         {/* Lado Direito */}
         <div className="relative z-10 hidden sm:block text-right">
-          <span className="text-xs font-medium text-[#EAE6E1]/60">
+          <span className="text-sm font-medium text-[#EAE6E1]/60">
             ELO Gastronomia
           </span>
         </div>

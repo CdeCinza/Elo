@@ -103,7 +103,7 @@ jobs:
           node node_modules/next/dist/bin/next start > "$RUNNER_TEMP/elo-next.log" 2>&1 &
           curl --fail --retry 20 --retry-delay 1 --retry-connrefused http://127.0.0.1:3000
       - name: Run browser and accessibility checks
-        run: npx playwright test e2e/tests/project-tour.spec.ts e2e/tests/accessibility.spec.ts
+        run: npx playwright test e2e/tests/project-tour.spec.ts e2e/tests/accessibility.spec.ts e2e/tests/usability.spec.ts
         env:
           PLAYWRIGHT_TEST_BASE_URL: http://127.0.0.1:3000
       - uses: actions/upload-artifact@v7
