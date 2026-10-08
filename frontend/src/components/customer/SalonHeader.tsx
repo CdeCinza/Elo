@@ -5,7 +5,7 @@ import { Receipt, Settings, ShieldAlert, X, Check, RefreshCw } from 'lucide-reac
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { toast } from '@/components/ui/ToastProvider';
-import { useEscapeKey } from '@/hooks/useEscapeKey';
+import { Modal } from '@/components/ui/Modal';
 import { linkTabletToTable, normalizeTableNumber, tableExists, unlinkTablet, verifyManagerCredentials } from '@/lib/tablet';
 
 interface SalonHeaderProps {
@@ -19,7 +19,6 @@ export const SalonHeader: React.FC<SalonHeaderProps> = ({
 }) => {
   const router = useRouter();
   const [showConfigModal, setShowConfigModal] = useState(false);
-useEscapeKey(showConfigModal, () => setShowConfigModal(false));
   const [managerEmail, setManagerEmail] = useState('');
   const [managerPassword, setManagerPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -127,9 +126,9 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
 
             {/* Contexto da Mesa */}
             <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-              <span className="text-xs sm:text-sm font-semibold text-[#191817] whitespace-nowrap">Mesa {tableNumber}</span>
+              <span className="text-sm sm:text-sm font-semibold text-[#191817] whitespace-nowrap">Mesa {tableNumber}</span>
               <span
-                className={`flex items-center gap-1 text-[10px] sm:text-xs font-semibold px-2 sm:px-2.5 py-0.5 rounded-full whitespace-nowrap ${
+                className={`flex items-center gap-1 text-sm sm:text-sm font-semibold px-2 sm:px-2.5 py-0.5 rounded-full whitespace-nowrap ${
                   isUnavailable
                     ? 'text-[#57534E] bg-[#EAE6E1] border border-[#D8D2C9]'
                     : tableStatus.includes('Conta') || tableStatus.includes('solicitada')
@@ -157,7 +156,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
           </div>
 
           {/* Lado Direito: Acesso à Comanda */}
-          <div className="flex items-center text-xs font-medium text-[#6E6760] shrink-0">
+          <div className="flex items-center text-sm font-medium text-[#6E6760] shrink-0">
             <Link
               href={`/table/${tableNumber}/order`}
               className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg border border-[#EAE6E1] bg-white hover:border-[#191817]/40 text-[#191817] transition-colors whitespace-nowrap"
@@ -172,7 +171,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
 
       {/* Modal Administrativo Protegido por PIN */}
       {showConfigModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-150">
+        <Modal isOpen={true} title="Gerenciar Este Tablet" isBusy={submitting} onClose={() => setShowConfigModal(false)}>
           <div className="w-full max-w-md bg-[#F9F8F6] rounded-3xl border border-[#EAE6E1] p-6 sm:p-7 shadow-2xl text-left space-y-5">
             <div className="flex items-center justify-between border-b border-[#EAE6E1] pb-4">
               <div className="flex items-center gap-2.5">
@@ -181,10 +180,11 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-[#191817]">Gerenciar Este Tablet</h3>
-                  <p className="text-[11px] text-[#6E6760]">Mesa atual vinculada: {tableNumber}</p>
+                  <p className="text-sm text-[#6E6760]">Mesa atual vinculada: {tableNumber}</p>
                 </div>
               </div>
               <button
+                disabled={submitting}
                 onClick={() => setShowConfigModal(false)}
                 aria-label="Fechar gerenciamento do tablet"
                 className="w-8 h-8 rounded-full border border-[#EAE6E1] flex items-center justify-center text-[#6E6760] hover:bg-white cursor-pointer"
@@ -195,14 +195,14 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
 
             <form onSubmit={handleUpdateTableConfig} className="space-y-4">
               {errorMsg && (
-                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2">
+                <div role="alert" className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 shrink-0" />
                   <span>{errorMsg}</span>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-[#191817]">
+                <label className="text-sm font-bold uppercase tracking-wider text-[#191817]">
                   Nova Numeração da Mesa
                 </label>
                 <input
@@ -217,7 +217,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
               </div>
 
               <fieldset className="space-y-1.5">
-                <legend className="text-xs font-bold uppercase tracking-wider text-[#191817] mb-1.5">
+                <legend className="text-sm font-bold uppercase tracking-wider text-[#191817] mb-1.5">
                   Autorização da gerência
                 </legend>
                 <input
@@ -246,7 +246,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#C84E1F]/15 disabled:opacity-60 disabled:cursor-wait"
+                  className="w-full py-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shadow-[#C84E1F]/15 disabled:opacity-60 disabled:cursor-wait"
                 >
                   <Check className="w-3.5 h-3.5" />
                   <span>{submitting ? 'Validando...' : 'Salvar e Trocar Mesa'}</span>
@@ -256,7 +256,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
                   type="button"
                   onClick={() => void handleUnlinkTablet()}
                   disabled={submitting}
-                  className="w-full py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-medium text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
+                  className="w-full py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 font-medium text-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
                 >
                   <RefreshCw className="w-3 h-3" />
                   <span>Desvincular Dispositivo (Voltar ao Setup)</span>
@@ -264,7 +264,7 @@ useEscapeKey(showConfigModal, () => setShowConfigModal(false));
               </div>
             </form>
           </div>
-        </div>
+        </Modal>
       )}
     </>
   );

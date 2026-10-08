@@ -201,19 +201,25 @@ class PosKdsController extends Controller
     {
         $restId = $this->resolveRestaurantId($request);
         $table = $this->findTableByNumber($tableNumber, $restId);
-        $table->update(['status' => 'occupied']);
 
-        if (! $table->activeOrder) {
-            Order::create([
-                'restaurant_id' => $restId,
-                'table_id' => $table->id,
-                'user_id' => $request->user()->id,
-                'type' => 'dine_in',
-                'status' => 'pending',
-                'subtotal' => 0.00,
-                'total' => 0.00,
-            ]);
-        }
+        $table = DB::transaction(function () use ($request, $restId, $table) {
+            $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+            $lockedTable->update(['status' => 'occupied']);
+
+            if (! $lockedTable->activeOrder) {
+                Order::create([
+                    'restaurant_id' => $restId,
+                    'table_id' => $lockedTable->id,
+                    'user_id' => $request->user()->id,
+                    'type' => 'dine_in',
+                    'status' => 'pending',
+                    'subtotal' => 0.00,
+                    'total' => 0.00,
+                ]);
+            }
+
+            return $lockedTable;
+        });
 
         return response()->json([
             'message' => "Mesa {$this->normalizeNumber($table->number)} aberta com sucesso.",
@@ -251,9 +257,11 @@ class PosKdsController extends Controller
         }
 
         $order = DB::transaction(function () use ($request, $restId, $table, $product, $quantity) {
-            $order = $table->activeOrder ?? Order::create([
+            $lockedTable = RestaurantTable::query()->whereKey($table->id)->lockForUpdate()->firstOrFail();
+
+            $order = $lockedTable->activeOrder ?? Order::create([
                 'restaurant_id' => $restId,
-                'table_id' => $table->id,
+                'table_id' => $lockedTable->id,
                 'user_id' => $request->user()->id,
                 'type' => 'dine_in',
                 'status' => 'pending',
@@ -273,12 +281,12 @@ class PosKdsController extends Controller
             $newSubtotal = (float) $order->items()->sum('subtotal');
             $order->update([
                 'subtotal' => $newSubtotal,
-                'total' => $newSubtotal,
+                'total' => max(round($newSubtotal + (float) $order->delivery_fee - (float) $order->discount, 2), 0.00),
             ]);
             $this->kitchenFlow->syncOrderStatus($order);
 
-            if ($table->status !== 'bill_requested') {
-                $table->update(['status' => 'occupied']);
+            if ($lockedTable->status !== 'bill_requested') {
+                $lockedTable->update(['status' => 'occupied']);
             }
 
             return $order;
@@ -302,36 +310,37 @@ class PosKdsController extends Controller
 
         $restId = $this->resolveRestaurantId($request);
         $table = $this->findTableByNumber($tableNumber, $restId);
-        $activeOrder = $table->activeOrder;
 
-        $subtotal = $activeOrder ? (float) $activeOrder->items()->sum('subtotal') : 0.0;
+        DB::transaction(function () use ($table, $validated, $restId): void {
+            $lockedTable = RestaurantTable::whereKey($table->id)->lockForUpdate()->firstOrFail();
+            $activeOrder = $lockedTable->activeOrder()->lockForUpdate()->first();
+            $subtotal = $activeOrder ? (float) $activeOrder->items()->sum('subtotal') : 0.0;
 
-        if ($activeOrder && $subtotal <= 0) {
-            // Comanda aberta sem consumo: libera a mesa sem registrar pagamento
-            $activeOrder->update(['status' => 'canceled']);
-        } elseif ($activeOrder) {
-            $paymentMethod = $validated['payment_method'];
-            $serviceFee = ($validated['include_service'] ?? false) ? round($subtotal * 0.10, 2) : 0.00;
+            if ($activeOrder && $subtotal <= 0) {
+                $activeOrder->update(['status' => 'canceled']);
+            } elseif ($activeOrder) {
+                $serviceFee = ($validated['include_service'] ?? false) ? round($subtotal * 0.10, 2) : 0.00;
 
-            Payment::create([
-                'order_id' => $activeOrder->id,
-                'transaction_id' => 'POS-'.strtoupper(uniqid()),
-                'method' => $paymentMethod,
-                'status' => 'paid',
-                'amount' => round($subtotal + $serviceFee, 2),
-                'paid_at' => now(),
-            ]);
+                Payment::create([
+                    'order_id' => $activeOrder->id,
+                    'transaction_id' => 'POS-'.strtoupper(uniqid()),
+                    'method' => $validated['payment_method'],
+                    'status' => 'paid',
+                    'amount' => max(round($subtotal + (float) $activeOrder->delivery_fee - (float) $activeOrder->discount + $serviceFee, 2), 0.00),
+                    'paid_at' => now(),
+                ]);
 
-            $activeOrder->update(['status' => 'delivered']);
-        }
+                $activeOrder->update(['status' => 'delivered']);
+            }
 
-        $table->update(['status' => 'free']);
+            $lockedTable->update(['status' => 'free']);
 
-        // Limpa registros de garçom chamado desta mesa
-        ActivityLog::where('restaurant_id', $restId)
-            ->where('action', 'waiter_called')
-            ->where('subject_id', $table->id)
-            ->delete();
+            ActivityLog::where('restaurant_id', $restId)
+                ->where('action', 'waiter_called')
+                ->where('subject_type', RestaurantTable::class)
+                ->where('subject_id', $lockedTable->id)
+                ->delete();
+        });
 
         return response()->json([
             'message' => "Mesa {$this->normalizeNumber($table->number)} finalizada e liberada com sucesso!",
@@ -418,12 +427,17 @@ class PosKdsController extends Controller
         $request->validate([
             'status' => 'required|in:preparing,ready,delivered',
             'from' => 'nullable|in:pending,preparing,ready',
+            'item_ids' => 'sometimes|required|array|min:1|max:500',
+            'item_ids.*' => 'required|integer|distinct',
         ]);
 
         $newStatus = $request->status;
 
         try {
-            DB::transaction(fn () => $this->kitchenFlow->advance($order, $newStatus, $request->user()?->id, $request->input('from')));
+            DB::transaction(function () use ($order, $newStatus, $request): void {
+                $lockedOrder = Order::whereKey($order->id)->lockForUpdate()->firstOrFail();
+                $this->kitchenFlow->advance($lockedOrder, $newStatus, $request->user()?->id, $request->input('from'), $request->input('item_ids'));
+            });
         } catch (InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

@@ -34,7 +34,7 @@ class StockService
 
         foreach ($needs as $need) {
             $ingredient = $need['ingredient'];
-            $neededQty = $need['needed'];
+            $neededQty = round($need['needed'], 3);
             $currentStock = (float) $ingredient->stock_qty;
 
             if ($currentStock < $neededQty) {
@@ -68,7 +68,7 @@ class StockService
                     continue;
                 }
 
-                $usedQty = $recipeIngredient->pivot->qty_used * $item->quantity;
+                $usedQty = round($recipeIngredient->pivot->qty_used * $item->quantity, 3);
 
                 if ($enforceAvailability && (float) $ingredient->stock_qty < $usedQty) {
                     throw new InvalidArgumentException("Estoque insuficiente do insumo '{$ingredient->name}' para confirmar o pedido.");

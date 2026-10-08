@@ -85,6 +85,34 @@ class StripePaymentTest extends TestCase
         $response->assertStatus(422);
     }
 
+    public function test_confirmation_rejects_underpayment_without_service_metadata(): void
+    {
+        Http::fake(['https://api.stripe.com/v1/payment_intents/pi_underpaid' => Http::response([
+            'id' => 'pi_underpaid', 'status' => 'succeeded', 'amount_received' => 100,
+            'metadata' => ['order_id' => (string) $this->order->id],
+        ])]);
+
+        $this->postJson('/api/v1/payments/stripe/confirm', [
+            'payment_intent_id' => 'pi_underpaid',
+        ])->assertUnprocessable();
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertEquals('occupied', $this->table->fresh()->status);
+    }
+
+    public function test_payment_intent_preserves_discount_and_delivery_fee(): void
+    {
+        $this->order->update(['discount' => 20, 'delivery_fee' => 5, 'total' => 85]);
+        Http::fake(['https://api.stripe.com/v1/payment_intents' => Http::response([
+            'id' => 'pi_discount', 'client_secret' => 'pi_discount_secret',
+        ])]);
+
+        $this->postJson('/api/v1/payments/stripe/create-intent', [
+            'order_id' => $this->order->id,
+        ])->assertOk()->assertJsonPath('amount', 85);
+        Http::assertSent(fn ($request): bool => $request['amount'] === 8500);
+    }
+
     public function test_creates_payment_intent_calculates_server_amount_without_service(): void
     {
         Http::fake([
@@ -213,6 +241,7 @@ class StripePaymentTest extends TestCase
                 'amount_received' => 11000,
                 'metadata' => [
                     'order_id' => (string) $this->order->id,
+                    'service_fee' => '10',
                 ],
             ], 200),
         ]);

@@ -62,7 +62,7 @@ class ProductController extends Controller
             return response()->json(['message' => 'Categoria não pertence ao restaurante.'], 422);
         }
 
-        if (! $this->ingredientsBelongToRestaurant($request->input('ingredients', []), $restaurantId)) {
+        if (! $this->ingredientsBelongToRestaurant($request->input('ingredients') ?? [], $restaurantId)) {
             return response()->json(['message' => 'Ingrediente não pertence ao restaurante.'], 422);
         }
 
@@ -72,7 +72,7 @@ class ProductController extends Controller
 
         if ($request->has('ingredients')) {
             $syncData = [];
-            foreach ($request->ingredients as $item) {
+            foreach ($request->input('ingredients') ?? [] as $item) {
                 $syncData[$item['id']] = ['qty_used' => $item['qty_used']];
             }
             $product->ingredients()->sync($syncData);
@@ -99,7 +99,7 @@ class ProductController extends Controller
             return response()->json(['message' => 'Categoria não pertence ao restaurante.'], 422);
         }
 
-        if (! $this->ingredientsBelongToRestaurant($request->input('ingredients', []), $product->restaurant_id)) {
+        if (! $this->ingredientsBelongToRestaurant($request->input('ingredients') ?? [], $product->restaurant_id)) {
             return response()->json(['message' => 'Ingrediente não pertence ao restaurante.'], 422);
         }
 
@@ -108,7 +108,7 @@ class ProductController extends Controller
 
         if ($request->has('ingredients')) {
             $syncData = [];
-            foreach ($request->ingredients as $item) {
+            foreach ($request->input('ingredients') ?? [] as $item) {
                 $syncData[$item['id']] = ['qty_used' => $item['qty_used']];
             }
             $product->ingredients()->sync($syncData);

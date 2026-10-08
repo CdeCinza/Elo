@@ -124,6 +124,22 @@ class ProductApiTest extends TestCase
         ]);
     }
 
+    public function test_nullable_recipe_can_be_created_and_cleared(): void
+    {
+        $response = $this->actingAs($this->manager, 'sanctum')->postJson('/api/v1/products', [
+            'category_id' => $this->category->id, 'name' => 'Sem receita',
+            'price' => 10, 'ingredients' => null,
+        ])->assertCreated()->assertJsonCount(0, 'product.ingredients');
+
+        $product = Product::findOrFail($response->json('product.id'));
+        $ingredient = Ingredient::factory()->create(['restaurant_id' => $this->manager->restaurant_id]);
+        $product->ingredients()->attach($ingredient->id, ['qty_used' => 1]);
+
+        $this->putJson("/api/v1/products/{$product->id}", ['ingredients' => null])
+            ->assertOk()->assertJsonCount(0, 'product.ingredients');
+        $this->assertDatabaseMissing('product_ingredients', ['product_id' => $product->id]);
+    }
+
     public function test_manager_cannot_change_another_restaurants_product(): void
     {
         $otherRestaurant = Restaurant::factory()->create();

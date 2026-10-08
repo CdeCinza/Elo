@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
+import { Modal } from '@/components/ui/Modal';
 import { api, getApiErrorMessage } from '@/lib/api';
 import { formatBRL } from '@/lib/format';
 import { CreditCard, CheckCircle2, AlertCircle, Loader2, X, ShieldCheck } from 'lucide-react';
@@ -211,11 +212,8 @@ export function StripePaymentModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+    <Modal isOpen={isOpen} title="Pagamento com cartão" isBusy={processing} onClose={onClose}>
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Pagamento com cartão"
         className="w-full max-w-md bg-white rounded-3xl border border-[#EAE6E1] p-6 shadow-2xl relative text-[#191817]"
       >
         <button
@@ -235,14 +233,14 @@ export function StripePaymentModal({
             <h2 className="text-base font-bold text-[#191817] tracking-tight">
               Pagamento com Cartão
             </h2>
-            <p className="text-xs text-[#78716A]">
+            <p className="text-sm text-[#78716A]">
               Checkout seguro via Stripe • {tableNumber ? `Mesa ${tableNumber}` : `Pedido #${orderId}`}
             </p>
           </div>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#FAF8F5] border border-[#EAE6E1] mb-5 flex items-center justify-between">
-          <span className="text-xs text-[#78716A] font-medium">Total a cobrar:</span>
+          <span className="text-sm text-[#78716A] font-medium">Total a cobrar:</span>
           <span className="text-xl font-bold text-[#C84E1F]">
             {formatBRL(displayedAmount)}
           </span>
@@ -256,26 +254,26 @@ export function StripePaymentModal({
             <h3 className="text-base font-bold text-emerald-800">
               Pagamento Aprovado!
             </h3>
-            <p className="text-xs text-[#78716A]">
+            <p className="text-sm text-[#78716A]">
               O pagamento foi confirmado e a mesa foi liberada com sucesso.
             </p>
           </div>
         ) : (
           <form onSubmit={handlePay} className="space-y-4">
             {errorMessage && (
-              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-2">
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-sm flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
                 <span>{errorMessage}</span>
               </div>
             )}
 
             <div>
-              <label className="block text-xs font-semibold text-[#191817] mb-2">
+              <label className="block text-sm font-semibold text-[#191817] mb-2">
                 Dados do Cartão (Crédito ou Débito)
               </label>
 
               {loading ? (
-                <div className="h-12 rounded-xl bg-[#FAF8F5] border border-[#EAE6E1] flex items-center justify-center gap-2 text-xs text-[#78716A]">
+                <div className="h-12 rounded-xl bg-[#FAF8F5] border border-[#EAE6E1] flex items-center justify-center gap-2 text-sm text-[#78716A]">
                   <Loader2 className="w-4 h-4 animate-spin text-[#C84E1F]" />
                   <span>Conectando com o Stripe seguro...</span>
                 </div>
@@ -287,7 +285,7 @@ export function StripePaymentModal({
             </div>
 
             {isTestMode && (
-              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-[11px] text-amber-900 flex items-center justify-between">
+              <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200/70 text-sm text-amber-900 flex items-center justify-between">
                 <span>Cartão de teste Stripe:</span>
                 <code className="bg-amber-100/70 px-2 py-0.5 rounded font-mono font-bold text-amber-950">
                   4242 4242 4242 4242
@@ -314,7 +312,7 @@ export function StripePaymentModal({
             </button>
 
             <div className="text-center pt-2">
-              <p className="text-[11px] text-[#A8A199] flex items-center justify-center gap-1">
+              <p className="text-sm text-[#A8A199] flex items-center justify-center gap-1">
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
                 {isTestMode ? 'Ambiente de testes • ' : ''}Dados do cartão processados diretamente pelo Stripe
               </p>
@@ -322,6 +320,6 @@ export function StripePaymentModal({
           </form>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -113,6 +113,7 @@ export default function KitchenKdsPage() {
   // Sem permissão não adianta insistir: o polling para até a próxima carga manual
   const accessDeniedRef = useRef(false);
   const [stationFilter, setStationFilter] = useState<'all' | 'grill' | 'fryer' | 'dessert'>('all');
+  const [mobileStage, setMobileStage] = useState<KitchenStage>('pending');
   const [soundEnabled, setSoundEnabled] = useState(false);
   const [busyOrderIds, setBusyOrderIds] = useState<number[]>([]);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -185,18 +186,36 @@ export default function KitchenKdsPage() {
   }, []);
 
   useEffect(() => {
+    let pollInFlight = false;
+
+    const pollOrders = () => {
+      if (document.hidden || accessDeniedRef.current || pollInFlight) return;
+      pollInFlight = true;
+      void fetchOrders(true).finally(() => {
+        pollInFlight = false;
+      });
+    };
+
     const initialFetch = setTimeout(() => {
-      void fetchOrders();
+      pollInFlight = true;
+      void fetchOrders().finally(() => {
+        pollInFlight = false;
+      });
     }, 0);
 
     // Polling a cada 4 segundos para novos pedidos caírem na hora
-    const interval = setInterval(() => {
-      if (!accessDeniedRef.current) fetchOrders(true);
-    }, 4000);
+    const interval = setInterval(pollOrders, 4000);
+
+    const handleVisibilityChange = () => {
+      pollOrders();
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       clearTimeout(initialFetch);
       clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchOrders]);
 
@@ -204,13 +223,14 @@ export default function KitchenKdsPage() {
     orderId: number,
     fromStage: KitchenStage,
     status: 'preparing' | 'ready' | 'delivered',
-    errorFallback: string
+    errorFallback: string,
+    itemIds: number[]
   ) => {
     ordersInFlight.add(orderId);
     mutationVersionRef.current += 1;
     setBusyOrderIds((prev) => [...prev, orderId]);
     try {
-      await api.patch(`/kds/orders/${orderId}/status`, { status, from: fromStage });
+      await api.patch(`/kds/orders/${orderId}/status`, { status, from: fromStage, item_ids: itemIds });
     } catch (err) {
       toast.error('Não foi possível atualizar o pedido', getApiErrorMessage(err, errorFallback));
     } finally {
@@ -223,25 +243,29 @@ export default function KitchenKdsPage() {
 
   // Avança apenas os pratos que estão na etapa do card clicado (rodadas diferentes seguem independentes)
   const handleAdvanceStatus = async (orderId: number, fromStage: 'pending' | 'preparing') => {
-    if (ordersInFlight.has(orderId)) return;
+    if (ordersInFlight.has(orderId) || loadError) return;
+    const itemIds = orders.find((order) => order.id === orderId)?.items
+      .filter((item) => (item.status ?? 'pending') === fromStage && (stationFilter === 'all' || item.station === stationFilter))
+      .map((item) => item.id) ?? [];
+    if (itemIds.length === 0) return;
     const nextStatus: 'preparing' | 'ready' = fromStage === 'pending' ? 'preparing' : 'ready';
 
     setOrders((prev) =>
       prev.map((order) =>
         order.id !== orderId
           ? order
-          : { ...order, items: order.items.map((item) => ((item.status ?? order.status) === fromStage ? { ...item, status: nextStatus } : item)) }
+          : { ...order, items: order.items.map((item) => (itemIds.includes(item.id) ? { ...item, status: nextStatus } : item)) }
       )
     );
 
-    await runOrderMutation(orderId, fromStage, nextStatus, 'Erro ao atualizar status do pedido.');
+    await runOrderMutation(orderId, fromStage, nextStatus, 'Erro ao atualizar status do pedido.', itemIds);
   };
 
   const handleDismissOrder = async (orderId: number) => {
-    if (ordersInFlight.has(orderId)) return;
+    if (ordersInFlight.has(orderId) || loadError) return;
     const targetOrder = orders.find((o) => o.id === orderId);
     const readyItemIds = new Set(
-      (targetOrder?.items ?? []).filter((i) => (i.status ?? targetOrder?.status) === 'ready').map((i) => i.id)
+      (targetOrder?.items ?? []).filter((i) => (i.status ?? targetOrder?.status) === 'ready' && (stationFilter === 'all' || i.station === stationFilter)).map((i) => i.id)
     );
     if (typeof window !== 'undefined') {
       try {
@@ -256,10 +280,11 @@ export default function KitchenKdsPage() {
         .filter((order) => order.items.length > 0)
     );
 
-    await runOrderMutation(orderId, 'ready', 'delivered', 'Erro ao dar baixa no pedido entregue.');
+    await runOrderMutation(orderId, 'ready', 'delivered', 'Erro ao dar baixa no pedido entregue.', [...readyItemIds]);
   };
 
   const handleToggleGroupCompleted = (orderId: number, itemIds: number[], currentAllCompleted: boolean) => {
+    if (loadError) return;
     const targetState = !currentAllCompleted;
     setOrders((prev) => {
       const updated = prev.map((order) => {
@@ -290,10 +315,9 @@ export default function KitchenKdsPage() {
     });
   };
 
-  const filteredOrders = orders.filter((order) => {
-    if (stationFilter === 'all') return true;
-    return order.items.some((item) => item.station === stationFilter);
-  });
+  const filteredOrders = orders
+    .map((order) => ({ ...order, items: order.items.filter((item) => stationFilter === 'all' || item.station === stationFilter) }))
+    .filter((order) => order.items.length > 0);
 
   // Cada coluna mostra o pedido apenas com os pratos que estão naquela etapa
   const ordersAtStage = (stage: KitchenStage): KitchenOrder[] =>
@@ -305,6 +329,7 @@ export default function KitchenKdsPage() {
   const preparingOrders = ordersAtStage('preparing');
   const readyOrders = ordersAtStage('ready');
 
+  const dataUnavailable = loading || !!loadError;
   const delayedCount = orders.filter((o) => o.minutesAgo >= 20 && o.status !== 'ready').length;
 
 
@@ -334,34 +359,34 @@ export default function KitchenKdsPage() {
       : null;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
+    <div className="elo-interface min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col selection:bg-[#C84E1F] selection:text-white font-sans antialiased">
       {/* 1. Header do KDS */}
-      <header className="h-16 px-6 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0 shadow-2xs">
+      <header className="min-h-20 px-4 sm:px-6 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0 shadow-2xs">
         <div className="flex items-center gap-4">
           <Link href="/" className="flex items-center gap-2 group">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="hidden sm:inline text-xs text-[#78716A] border-l border-[#E0DBD3] pl-3">
+            <span className="hidden sm:inline text-base text-[#6E6760] border-l border-[#E0DBD3] pl-3">
               KDS • Linha de Produção & Cozinha
             </span>
           </Link>
         </div>
 
         {/* Métricas Operacionais Centrais */}
-        <div className="hidden lg:flex items-center gap-6 text-xs text-[#78716A]">
+        <div className="hidden 2xl:flex items-center gap-6 text-base text-[#6E6760]">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-600" />
-            <span>Fila ativa: <strong className="text-[#191817]">{orders.length} comandas</strong></span>
+            <span>Fila ativa: <strong className="text-[#191817]">{dataUnavailable ? '—' : orders.length} comandas</strong></span>
           </div>
           <div className="h-3 w-[1px] bg-[#E0DBD3]" />
           <div>
             <span>
               Espera média:{' '}
-              <strong className="text-[#191817]">{averageWaitMinutes === null ? '—' : `${averageWaitMinutes} min`}</strong>
+              <strong className="text-[#191817]">{dataUnavailable || averageWaitMinutes === null ? '—' : `${averageWaitMinutes} min`}</strong>
             </span>
           </div>
           <div className="h-3 w-[1px] bg-[#E0DBD3]" />
           <div className="flex items-center gap-1.5">
-            {delayedCount > 0 ? (
+            {dataUnavailable ? <span>Fila não sincronizada</span> : delayedCount > 0 ? (
               <span className="text-rose-700 font-semibold flex items-center gap-1">
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
                 {delayedCount} {delayedCount === 1 ? 'pedido em atraso (>20m)' : 'pedidos em atraso'}
@@ -381,7 +406,7 @@ export default function KitchenKdsPage() {
             onClick={handleToggleSound}
             aria-pressed={soundEnabled}
             title={soundEnabled ? 'Silenciar aviso de novos pedidos' : 'Tocar um aviso quando chegar pedido novo'}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-xs text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors cursor-pointer shadow-2xs"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-base text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors cursor-pointer shadow-2xs"
           >
             {soundEnabled ? (
               <>
@@ -390,7 +415,7 @@ export default function KitchenKdsPage() {
               </>
             ) : (
               <>
-                <VolumeX className="w-3.5 h-3.5 text-[#A8A199]" />
+                <VolumeX className="w-3.5 h-3.5 text-[#6E6760]" />
                 <span>Ativar alerta sonoro</span>
               </>
             )}
@@ -402,7 +427,7 @@ export default function KitchenKdsPage() {
             }}
             title="Sair do sistema"
             aria-label="Sair do sistema"
-            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#78716A] transition-colors shadow-2xs cursor-pointer"
+            className="p-1.5 rounded-lg bg-white border border-[#E0DBD3] hover:text-rose-600 text-[#6E6760] transition-colors shadow-2xs cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
           </button>
@@ -410,72 +435,76 @@ export default function KitchenKdsPage() {
       </header>
 
       {/* 2. Barra de Filtros por Praça da Cozinha */}
-      <div className="px-6 py-3 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0">
+      <div className="px-4 sm:px-6 py-3 bg-white border-b border-[#EAE6E1] flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2 overflow-x-auto bg-[#FAF8F5] p-1 rounded-xl border border-[#EAE6E1]">
-          <span className="text-xs text-[#78716A] px-2 font-medium hidden sm:inline">Praças:</span>
+          <span className="text-base text-[#6E6760] px-2 font-medium hidden sm:inline">Praças:</span>
           <button
             onClick={() => setStationFilter('all')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            aria-pressed={stationFilter === 'all'}
+            className={`shrink-0 px-3 py-2.5 rounded-lg text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               stationFilter === 'all'
                 ? 'bg-white text-[#191817] shadow-xs font-semibold'
-                : 'text-[#78716A] hover:text-[#191817]'
+                : 'text-[#6E6760] hover:text-[#191817]'
             }`}
           >
             Todas ({orders.length})
           </button>
           <button
             onClick={() => setStationFilter('grill')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            aria-pressed={stationFilter === 'grill'}
+            className={`shrink-0 px-3 py-2.5 rounded-lg text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               stationFilter === 'grill'
                 ? 'bg-[#C84E1F] text-white shadow-xs font-semibold'
-                : 'text-[#78716A] hover:text-[#191817]'
+                : 'text-[#6E6760] hover:text-[#191817]'
             }`}
           >
             Chapa & Grelha
           </button>
           <button
             onClick={() => setStationFilter('fryer')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            aria-pressed={stationFilter === 'fryer'}
+            className={`shrink-0 px-3 py-2.5 rounded-lg text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               stationFilter === 'fryer'
                 ? 'bg-[#C84E1F] text-white shadow-xs font-semibold'
-                : 'text-[#78716A] hover:text-[#191817]'
+                : 'text-[#6E6760] hover:text-[#191817]'
             }`}
           >
             Frituras & Entradas
           </button>
           <button
             onClick={() => setStationFilter('dessert')}
-            className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            aria-pressed={stationFilter === 'dessert'}
+            className={`shrink-0 px-3 py-2.5 rounded-lg text-base font-medium whitespace-nowrap transition-colors cursor-pointer ${
               stationFilter === 'dessert'
                 ? 'bg-[#C84E1F] text-white shadow-xs font-semibold'
-                : 'text-[#78716A] hover:text-[#191817]'
+                : 'text-[#6E6760] hover:text-[#191817]'
             }`}
           >
             Sobremesas
           </button>
         </div>
 
-        <div className="text-xs text-[#78716A] hidden sm:block">
+        <div className="text-base text-[#6E6760] hidden sm:block">
           Toque no prato para dar baixa em lote • Avanço com 1 clique
         </div>
       </div>
 
       {/* 2.1 Régua Global de Produção ("All-Day Count" / Linha de Fogo) */}
-      <div className="px-6 py-2.5 bg-[#FAF8F5] border-b border-[#EAE6E1] flex items-center gap-3 overflow-x-auto text-xs shrink-0">
+      <div className="px-6 py-2.5 bg-[#FAF8F5] border-b border-[#EAE6E1] flex flex-col sm:flex-row items-start sm:items-center gap-3 overflow-x-auto text-base shrink-0">
         <div className="flex items-center gap-1.5 font-bold text-[#191817] shrink-0">
-          <Flame className="w-4 h-4 text-[#C84E1F]" />
-          <span>Linha de fogo ({totalActiveItemsCount} {totalActiveItemsCount === 1 ? 'item' : 'itens'} no salão):</span>
+          <Flame className="w-4 h-4 text-[#9E3712]" />
+          <span>Linha de fogo ({dataUnavailable ? '—' : totalActiveItemsCount} {totalActiveItemsCount === 1 ? 'item' : 'itens'} no salão):</span>
         </div>
         <div className="flex items-center gap-2 overflow-x-auto py-0.5">
           {allDayProductionSummary.length === 0 ? (
-            <span className="text-[#78716A] italic text-xs">Nenhuma produção pendente no momento.</span>
+            <span className="text-[#6E6760] italic text-base">{dataUnavailable ? 'Produção não sincronizada.' : 'Nenhuma produção pendente no momento.'}</span>
           ) : (
             allDayProductionSummary.map((item) => (
               <span
                 key={item.name}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-[#E0DBD3] shadow-2xs font-medium text-[#191817] whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-2.5 py-2.5 rounded-lg bg-white border border-[#E0DBD3] shadow-2xs font-medium text-[#191817] whitespace-nowrap"
               >
-                <span className="font-bold text-[#C84E1F]">{item.quantity}x</span>
+                <span className="font-bold text-[#9E3712]">{item.quantity}x</span>
                 <span>{item.name}</span>
               </span>
             ))
@@ -488,10 +517,10 @@ export default function KitchenKdsPage() {
           <div className="flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 text-amber-700 shrink-0" />
             <div>
-              <p className="text-xs font-bold text-amber-900">
+              <p className="text-base font-bold text-amber-900">
                 {loadError === 'forbidden' ? 'Seu perfil não acessa a cozinha' : 'Sem conexão com o servidor'}
               </p>
-              <p className="text-[11px] text-amber-800">
+              <p className="text-sm text-amber-800">
                 {loadError === 'forbidden'
                   ? 'O painel da cozinha é usado pela gerência e pelos cozinheiros.'
                   : orders.length > 0
@@ -501,7 +530,7 @@ export default function KitchenKdsPage() {
             </div>
           </div>
           {loadError === 'forbidden' && (
-            <Link href="/counter" className="text-xs text-[#C84E1F] hover:underline font-semibold shrink-0">
+            <Link href="/counter" className="text-base text-[#9E3712] hover:underline font-semibold shrink-0">
               Ir para o caixa
             </Link>
           )}
@@ -516,8 +545,8 @@ export default function KitchenKdsPage() {
               <CheckCircle2 className="w-4 h-4" />
             </div>
             <div>
-              <p className="text-xs font-bold text-[#191817]">Fila de produção em dia (0 pedidos)</p>
-              <p className="text-[11px] text-[#78716A]">
+              <p className="text-base font-bold text-[#191817]">Fila de produção em dia (0 pedidos)</p>
+              <p className="text-sm text-[#6E6760]">
                 A cozinha está aguardando novos pedidos. Ao enviar um pedido pelo tablet ou salão, ele aparecerá aqui instantaneamente.
               </p>
             </div>
@@ -525,24 +554,32 @@ export default function KitchenKdsPage() {
         </div>
       )}
 
+      <nav aria-label="Etapas da cozinha" className="md:hidden flex gap-2 px-4 pt-4">
+        {(['pending', 'preparing', 'ready'] as KitchenStage[]).map((stage) => (
+          <button key={stage} type="button" aria-pressed={mobileStage === stage} onClick={() => setMobileStage(stage)}
+            className={`flex-1 rounded-xl border px-2 py-3 font-semibold ${mobileStage === stage ? 'bg-[#191817] text-white border-[#191817]' : 'bg-white border-[#E0DBD3]'}`}>
+            {stageLabels[stage]} ({dataUnavailable ? '—' : ordersAtStage(stage).length})
+          </button>
+        ))}
+      </nav>
       {/* 4. Colunas Kanban Densas e Estruturadas */}
       <div className="flex-1 p-6 grid grid-cols-1 md:grid-cols-3 gap-5 overflow-y-auto">
         {/* Coluna 1: Fila de Entrada */}
-        <div className="bg-white rounded-2xl border border-[#EAE6E1] p-4 flex flex-col min-h-[500px] shadow-xs">
+        <div className={`bg-white rounded-2xl border border-[#EAE6E1] p-4 flex-col min-h-[300px] md:min-h-[500px] shadow-xs ${mobileStage === 'pending' ? 'flex' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#EAE6E1] shrink-0">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
               <h2 className="text-sm font-semibold text-[#191817]">Fila de entrada</h2>
             </div>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
-              {pendingOrders.length} aguardando
+            <span className="text-base font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200">
+              {dataUnavailable ? '—' : pendingOrders.length} aguardando
             </span>
           </div>
 
           <div className="space-y-3.5 flex-1 overflow-y-auto">
             {pendingOrders.length === 0 && (
-              <div className="py-16 text-center text-[#57534E] text-xs">
-                Nenhum pedido pendente nesta praça.
+              <div className="py-16 text-center text-[#57534E] text-base">
+                {dataUnavailable ? 'Não foi possível confirmar os pedidos desta etapa.' : 'Nenhum pedido pendente nesta praça.'}
               </div>
             )}
 
@@ -558,19 +595,19 @@ export default function KitchenKdsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-base font-bold text-[#191817]">Mesa {order.tableNumber}</span>
-                      <span className="text-[11px] text-[#78716A] ml-2">#{order.id}</span>
+                      <span className="text-sm text-[#6E6760] ml-2">#{order.id}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleToggleGroupCompleted(order.id, order.items.map((i) => i.id), allChecked)}
-                        className="text-[11px] text-[#78716A] hover:text-[#C84E1F] font-medium underline transition-colors cursor-pointer"
+                        className="text-sm text-[#6E6760] hover:text-[#9E3712] font-medium underline transition-colors cursor-pointer"
                         title="Marcar ou desmarcar todos os itens deste pedido"
                       >
                         {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
                       </button>
                       <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        className={`text-base font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
                           order.minutesAgo >= 15
                             ? 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold'
                             : 'bg-amber-50 text-amber-800 border border-amber-200'
@@ -583,21 +620,22 @@ export default function KitchenKdsPage() {
                   </div>
 
                   {/* Lista de Itens Consolidados */}
-                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-xs">
+                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-base">
                     {grouped.map((item) => (
                       <div
                         key={item.key}
                         onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         role="checkbox"
                         aria-checked={item.allCompleted}
-                        tabIndex={0}
+                        aria-disabled={!!loadError}
+                        tabIndex={loadError ? -1 : 0}
                         onKeyDown={(e) => {
                           if (e.key === ' ' || e.key === 'Enter') {
                             e.preventDefault();
                             handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted);
                           }
                         }}
-                        className="cursor-pointer group select-none"
+                        className="cursor-pointer group select-none min-h-11 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-[#191817]"
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -610,19 +648,19 @@ export default function KitchenKdsPage() {
                             {item.allCompleted && <Check className="w-3 h-3" />}
                           </div>
                           <span className={`font-medium ${item.allCompleted ? 'line-through text-[#6E6760]' : 'text-[#191817]'}`}>
-                            <strong className={item.allCompleted ? 'text-[#6E6760]' : 'text-[#C84E1F] font-bold'}>
+                            <strong className={item.allCompleted ? 'text-[#6E6760]' : 'text-[#9E3712] font-bold'}>
                               {item.totalQuantity}x
                             </strong>{' '}
                             {item.name}
                           </span>
                           {item.status !== order.status && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-[#E0DBD3] text-[#57534E]">
+                            <span className="text-sm font-semibold px-1.5 py-0.5 rounded bg-white border border-[#E0DBD3] text-[#57534E]">
                               {stageLabels[item.status]}
                             </span>
                           )}
                         </div>
                         {item.notes && (
-                          <p className="text-[11px] text-[#9E3712] pl-6 mt-0.5 font-medium">
+                          <p className="text-sm text-[#9E3712] pl-6 mt-0.5 font-medium">
                             • {item.notes}
                           </p>
                         )}
@@ -632,8 +670,8 @@ export default function KitchenKdsPage() {
 
                   <button
                     onClick={() => handleAdvanceStatus(order.id, 'pending')}
-                    disabled={busyOrderIds.includes(order.id)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-[#C84E1F] border border-[#E0DBD3] hover:border-[#C84E1F] text-[#191817] hover:text-white font-medium text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-wait"
+                    disabled={busyOrderIds.includes(order.id) || !!loadError}
+                    className="w-full py-2.5 px-3 rounded-xl bg-white hover:bg-[#C84E1F] border border-[#E0DBD3] hover:border-[#C84E1F] text-[#191817] hover:text-white font-medium text-base flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-wait"
                   >
                     <span>Iniciar preparo</span>
                     <ArrowRight className="w-3.5 h-3.5" />
@@ -645,21 +683,21 @@ export default function KitchenKdsPage() {
         </div>
 
         {/* Coluna 2: Em Preparo */}
-        <div className="bg-white rounded-2xl border border-[#EAE6E1] p-4 flex flex-col min-h-[500px] shadow-xs">
+        <div className={`bg-white rounded-2xl border border-[#EAE6E1] p-4 flex-col min-h-[300px] md:min-h-[500px] shadow-xs ${mobileStage === 'preparing' ? 'flex' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#EAE6E1] shrink-0">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-[#C84E1F] animate-pulse" />
               <h2 className="text-sm font-semibold text-[#191817]">Em preparo</h2>
             </div>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-[#C84E1F]/15 text-[#9E3712] border border-[#C84E1F]/25 font-semibold">
-              {preparingOrders.length} no fogo
+            <span className="text-base font-medium px-2 py-0.5 rounded-full bg-[#C84E1F]/15 text-[#9E3712] border border-[#C84E1F]/25 font-semibold">
+              {dataUnavailable ? '—' : preparingOrders.length} no fogo
             </span>
           </div>
 
           <div className="space-y-3.5 flex-1 overflow-y-auto">
             {preparingOrders.length === 0 && (
-              <div className="py-16 text-center text-[#57534E] text-xs">
-                Nenhum pedido sendo preparado no momento.
+              <div className="py-16 text-center text-[#57534E] text-base">
+                {dataUnavailable ? 'Não foi possível confirmar os pedidos desta etapa.' : 'Nenhum pedido sendo preparado no momento.'}
               </div>
             )}
 
@@ -675,22 +713,22 @@ export default function KitchenKdsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-base font-bold text-[#191817]">Mesa {order.tableNumber}</span>
-                      <span className="text-[11px] text-[#78716A] ml-2">#{order.id}</span>
+                      <span className="text-sm text-[#6E6760] ml-2">#{order.id}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
                         onClick={() => handleToggleGroupCompleted(order.id, order.items.map((i) => i.id), allChecked)}
-                        className="text-[11px] text-[#78716A] hover:text-[#C84E1F] font-medium underline transition-colors cursor-pointer"
+                        className="text-sm text-[#6E6760] hover:text-[#9E3712] font-medium underline transition-colors cursor-pointer"
                         title="Marcar ou desmarcar todos os itens deste pedido"
                       >
                         {allChecked ? 'Desmarcar todos' : 'Marcar todos'}
                       </button>
                       <span
-                        className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                        className={`text-base font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${
                           order.minutesAgo >= 20
                             ? 'bg-rose-50 text-rose-700 border border-rose-200 font-semibold'
-                            : 'bg-[#C84E1F]/15 text-[#C84E1F]'
+                            : 'bg-[#C84E1F]/15 text-[#9E3712]'
                         }`}
                       >
                         <Flame className="w-3.5 h-3.5" />
@@ -700,21 +738,22 @@ export default function KitchenKdsPage() {
                   </div>
 
                   {/* Lista de Itens Consolidados */}
-                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-xs">
+                  <div className="space-y-2 border-t border-[#E0DBD3] pt-2.5 text-base">
                     {grouped.map((item) => (
                       <div
                         key={item.key}
                         onClick={() => handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted)}
                         role="checkbox"
                         aria-checked={item.allCompleted}
-                        tabIndex={0}
+                        aria-disabled={!!loadError}
+                        tabIndex={loadError ? -1 : 0}
                         onKeyDown={(e) => {
                           if (e.key === ' ' || e.key === 'Enter') {
                             e.preventDefault();
                             handleToggleGroupCompleted(order.id, item.itemIds, item.allCompleted);
                           }
                         }}
-                        className="cursor-pointer group select-none"
+                        className="cursor-pointer group select-none min-h-11 py-2 rounded-lg focus-visible:outline-2 focus-visible:outline-[#191817]"
                       >
                         <div className="flex items-center gap-2">
                           <div
@@ -726,20 +765,20 @@ export default function KitchenKdsPage() {
                           >
                             {item.allCompleted && <Check className="w-3 h-3" />}
                           </div>
-                          <span className={`font-medium ${item.allCompleted ? 'line-through text-[#A8A199]' : 'text-[#191817]'}`}>
-                            <strong className={item.allCompleted ? 'text-[#A8A199]' : 'text-[#C84E1F] font-bold'}>
+                          <span className={`font-medium ${item.allCompleted ? 'line-through text-[#6E6760]' : 'text-[#191817]'}`}>
+                            <strong className={item.allCompleted ? 'text-[#6E6760]' : 'text-[#9E3712] font-bold'}>
                               {item.totalQuantity}x
                             </strong>{' '}
                             {item.name}
                           </span>
                           {item.status !== order.status && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-white border border-[#E0DBD3] text-[#57534E]">
+                            <span className="text-sm font-semibold px-1.5 py-0.5 rounded bg-white border border-[#E0DBD3] text-[#57534E]">
                               {stageLabels[item.status]}
                             </span>
                           )}
                         </div>
                         {item.notes && (
-                          <p className="text-[11px] text-[#C84E1F] pl-6 mt-0.5 font-medium">
+                          <p className="text-sm text-[#9E3712] pl-6 mt-0.5 font-medium">
                             • {item.notes}
                           </p>
                         )}
@@ -749,8 +788,8 @@ export default function KitchenKdsPage() {
 
                   <button
                     onClick={() => handleAdvanceStatus(order.id, 'preparing')}
-                    disabled={busyOrderIds.includes(order.id)}
-                    className="w-full py-2.5 px-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-wait"
+                    disabled={busyOrderIds.includes(order.id) || !!loadError}
+                    className="w-full py-2.5 px-3 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-base flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50 disabled:cursor-wait"
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />
                     <span>Concluir prato e chamar garçom</span>
@@ -762,21 +801,21 @@ export default function KitchenKdsPage() {
         </div>
 
         {/* Coluna 3: Pronto para Entrega */}
-        <div className="bg-white rounded-2xl border border-[#EAE6E1] p-4 flex flex-col min-h-[500px] shadow-xs">
+        <div className={`bg-white rounded-2xl border border-[#EAE6E1] p-4 flex-col min-h-[300px] md:min-h-[500px] shadow-xs ${mobileStage === 'ready' ? 'flex' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between mb-4 pb-3 border-b border-[#EAE6E1] shrink-0">
             <div className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-600" />
               <h2 className="text-sm font-semibold text-[#191817]">Pronto para servir</h2>
             </div>
-            <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
-              {readyOrders.length} na bancada
+            <span className="text-base font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200">
+              {dataUnavailable ? '—' : readyOrders.length} na bancada
             </span>
           </div>
 
           <div className="space-y-3.5 flex-1 overflow-y-auto">
             {readyOrders.length === 0 && (
-              <div className="py-16 text-center text-[#57534E] text-xs">
-                Nenhum prato na bancada de expedição.
+              <div className="py-16 text-center text-[#57534E] text-base">
+                {dataUnavailable ? 'Não foi possível confirmar os pedidos desta etapa.' : 'Nenhum prato na bancada de expedição.'}
               </div>
             )}
 
@@ -791,20 +830,20 @@ export default function KitchenKdsPage() {
                   <div className="flex items-center justify-between">
                     <div>
                       <span className="text-base font-bold text-[#191817]">Mesa {order.tableNumber}</span>
-                      <span className="text-[11px] text-[#78716A] ml-2">#{order.id}</span>
+                      <span className="text-sm text-[#6E6760] ml-2">#{order.id}</span>
                     </div>
-                    <span className="text-xs text-emerald-700 font-medium flex items-center gap-1">
+                    <span className="text-base text-emerald-700 font-medium flex items-center gap-1">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                       Bancada pronta
                     </span>
                   </div>
 
-                  <div className="space-y-1.5 border-t border-[#E0DBD3] pt-2.5 text-xs">
+                  <div className="space-y-1.5 border-t border-[#E0DBD3] pt-2.5 text-base">
                     {grouped.map((item) => (
                       <div key={item.key} className="font-medium text-[#191817]">
                         <strong className="text-emerald-700 font-bold">{item.totalQuantity}x</strong> {item.name}
                         {item.notes && (
-                          <p className="text-[11px] text-[#78716A] pl-5 mt-0.5 font-normal">
+                          <p className="text-sm text-[#6E6760] pl-5 mt-0.5 font-normal">
                             • {item.notes}
                           </p>
                         )}
@@ -812,14 +851,14 @@ export default function KitchenKdsPage() {
                     ))}
                   </div>
 
-                  <div className="text-center py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-xs font-medium">
+                  <div className="text-center py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-base font-medium">
                     Aguardando retirada pelo garçom
                   </div>
 
                   <button
                     onClick={() => handleDismissOrder(order.id)}
-                    disabled={busyOrderIds.includes(order.id)}
-                    className="w-full py-2 px-3 rounded-xl bg-white border border-[#E0DBD3] hover:bg-stone-50 text-[#57534E] hover:text-[#191817] text-xs font-medium transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-wait"
+                    disabled={busyOrderIds.includes(order.id) || !!loadError}
+                    className="w-full py-2 px-3 rounded-xl bg-white border border-[#E0DBD3] hover:bg-stone-50 text-[#57534E] hover:text-[#191817] text-base font-medium transition-colors cursor-pointer shadow-2xs disabled:opacity-50 disabled:cursor-wait"
                   >
                     Entregue ao salão (baixar)
                   </button>

@@ -79,6 +79,7 @@ class OrderController extends Controller
         try {
             $order = DB::transaction(function () use ($request) {
                 $subtotal = 0.00;
+                $lines = [];
 
                 $order = Order::create([
                     'restaurant_id' => $request->user()->restaurant_id,
@@ -86,8 +87,8 @@ class OrderController extends Controller
                     'user_id' => $request->user()->id,
                     'type' => $request->type,
                     'status' => 'pending',
-                    'delivery_fee' => $request->input('delivery_fee', 0.00),
-                    'discount' => $request->input('discount', 0.00),
+                    'delivery_fee' => $request->input('delivery_fee') ?? 0.00,
+                    'discount' => $request->input('discount') ?? 0.00,
                     'subtotal' => 0.00,
                     'total' => 0.00,
                 ]);
@@ -101,7 +102,7 @@ class OrderController extends Controller
                         throw new \InvalidArgumentException("O produto '{$product->name}' não está disponível no momento.");
                     }
 
-                    $this->stockService->ensureAvailable([['product' => $product, 'quantity' => (int) $itemData['quantity']]]);
+                    $lines[] = ['product' => $product, 'quantity' => (int) $itemData['quantity']];
 
                     $itemSubtotal = round((float) $product->price * $itemData['quantity'], 2);
                     $subtotal += $itemSubtotal;
@@ -115,6 +116,8 @@ class OrderController extends Controller
                         'notes' => $itemData['notes'] ?? null,
                     ]);
                 }
+
+                $this->stockService->ensureAvailable($lines);
 
                 $total = $subtotal + $order->delivery_fee - $order->discount;
 
@@ -240,8 +243,11 @@ class OrderController extends Controller
 
                 $order->update(['status' => $newStatus]);
 
-                if (in_array($newStatus, ['delivered', 'canceled']) && $order->table_id) {
-                    RestaurantTable::where('id', $order->table_id)->update(['status' => 'free']);
+                if ($newStatus === 'canceled' && $order->table_id) {
+                    $table = RestaurantTable::whereKey($order->table_id)->lockForUpdate()->first();
+                    if ($table && ! $table->activeOrder()->exists()) {
+                        $table->update(['status' => 'free']);
+                    }
                 }
 
                 ActivityLog::create([

@@ -12,6 +12,7 @@ use App\Models\RestaurantTable;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class PosKdsApiTest extends TestCase
@@ -72,6 +73,27 @@ class PosKdsApiTest extends TestCase
             ->assertJsonPath('table.status', 'occupied');
 
         $this->assertEquals('occupied', $this->table->fresh()->status);
+    }
+
+    public function test_customer_and_pos_additions_preserve_order_discount_and_delivery_fee(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+        $order = Order::firstOrFail();
+        $order->update(['discount' => 10, 'delivery_fee' => 5, 'total' => 31.90]);
+
+        $this->postJson('/api/v1/customer/table/01/order', [
+            'items' => [['product_id' => $this->product->id, 'quantity' => 1]],
+        ])->assertCreated()->assertJsonPath('order.total', 68.8);
+
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+
+        $this->assertEquals(105.70, (float) $order->fresh()->total);
+        $this->postJson('/api/v1/pos/tables/01/close', ['payment_method' => 'cash'])->assertOk();
+        $this->assertDatabaseHas('payments', ['order_id' => $order->id, 'amount' => 105.70]);
     }
 
     public function test_customer_can_call_waiter_and_request_bill(): void
@@ -399,6 +421,31 @@ class PosKdsApiTest extends TestCase
         $this->assertDatabaseHas('orders', ['table_id' => $this->table->id, 'status' => 'canceled']);
     }
 
+    public function test_failed_closing_rolls_back_payment_and_keeps_table_open(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+
+        $eventName = 'eloquent.updating: '.Order::class;
+        Event::listen($eventName, function (Order $order): void {
+            if ($order->status === 'delivered') {
+                throw new \RuntimeException('Falha ao fechar o pedido.');
+            }
+        });
+
+        try {
+            $this->postJson('/api/v1/pos/tables/01/close', ['payment_method' => 'cash'])
+                ->assertStatus(500);
+        } finally {
+            Event::forget($eventName);
+        }
+
+        $this->assertDatabaseCount('payments', 0);
+        $this->assertEquals('occupied', $this->table->fresh()->status);
+        $this->assertDatabaseHas('orders', ['table_id' => $this->table->id, 'status' => 'pending']);
+    }
+
     public function test_pos_can_close_table_with_payment(): void
     {
         // Abre e lança item
@@ -468,6 +515,68 @@ class PosKdsApiTest extends TestCase
             ->assertJsonPath('order.status', 'preparing');
 
         $this->assertEquals('preparing', $order->fresh()->status);
+    }
+
+    public function test_kds_advances_only_selected_items_and_preserves_other_stations(): void
+    {
+        foreach (['Chapa', 'Fritura'] as $notes) {
+            $this->postJson('/api/v1/pos/tables/01/items', [
+                'product_id' => $this->product->id,
+                'quantity' => 1,
+                'notes' => $notes,
+            ])->assertOk();
+        }
+
+        $order = Order::firstOrFail();
+        $items = $order->items()->orderBy('id')->get();
+
+        foreach (['pending' => 'preparing', 'preparing' => 'ready', 'ready' => 'delivered'] as $from => $status) {
+            $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+                'status' => $status,
+                'from' => $from,
+                'item_ids' => [$items[0]->id],
+            ])->assertOk();
+
+            $this->assertSame($status, $items[0]->fresh()->status);
+            $this->assertSame('pending', $items[1]->fresh()->status);
+            $this->assertSame('pending', $order->fresh()->status);
+        }
+    }
+
+    public function test_kds_rejects_foreign_empty_duplicate_and_stale_item_selections(): void
+    {
+        $this->postJson('/api/v1/pos/tables/01/items', [
+            'product_id' => $this->product->id, 'quantity' => 1,
+        ])->assertOk();
+        $order = Order::firstOrFail();
+        $item = $order->items()->firstOrFail();
+        $otherOrder = Order::create([
+            'restaurant_id' => $this->restaurant->id,
+            'type' => 'dine_in',
+            'status' => 'pending',
+            'subtotal' => 36.90,
+            'total' => 36.90,
+        ]);
+        $otherItem = OrderItem::create([
+            'order_id' => $otherOrder->id,
+            'product_id' => $this->product->id,
+            'unit_price' => 36.90,
+            'quantity' => 1,
+            'subtotal' => 36.90,
+        ]);
+
+        foreach ([[], [$item->id, $item->id], [$otherItem->id]] as $itemIds) {
+            $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+                'status' => 'preparing', 'from' => 'pending', 'item_ids' => $itemIds,
+            ])->assertUnprocessable();
+        }
+
+        $this->assertSame('pending', $otherItem->fresh()->status);
+        $item->update(['status' => 'preparing']);
+        $this->patchJson("/api/v1/kds/orders/{$order->id}/status", [
+            'status' => 'preparing', 'from' => 'pending', 'item_ids' => [$item->id],
+        ])->assertUnprocessable();
+        $this->assertSame('preparing', $item->fresh()->status);
     }
 
     public function test_pos_can_create_update_and_delete_table(): void

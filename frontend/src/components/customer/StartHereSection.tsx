@@ -42,7 +42,7 @@ export const StartHereSection: React.FC<StartHereProps> = ({ tableId, categories
         </h2>
         <Link
           href={`/table/${tableId}/menu`}
-          className="text-xs font-semibold text-[#C84E1F] hover:text-[#B34217] flex items-center gap-1 transition-colors shrink-0"
+          className="text-sm font-semibold text-[#C84E1F] hover:text-[#B34217] flex items-center gap-1 transition-colors shrink-0"
         >
           <span>Ver cardápio completo</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
@@ -71,7 +71,7 @@ export const StartHereSection: React.FC<StartHereProps> = ({ tableId, categories
               <div className="relative z-10 flex items-end justify-between gap-2">
                 <div>
                   <h3 className="text-base font-semibold text-white mb-0.5">{category.name}</h3>
-                  <p className="text-xs text-[#EAE6E1]/80 line-clamp-2">
+                  <p className="text-sm text-[#EAE6E1]/80 line-clamp-2">
                     {category.description || 'Explore os sabores desta categoria.'}
                   </p>
                 </div>

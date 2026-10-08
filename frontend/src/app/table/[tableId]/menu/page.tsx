@@ -7,6 +7,8 @@ import { Search, Plus, ArrowLeft, Check, ShoppingBag } from 'lucide-react';
 import { formatBRL } from '@/lib/format';
 import Link from 'next/link';
 import { toast } from '@/components/ui/ToastProvider';
+import { Modal } from '@/components/ui/Modal';
+import { ProductImage } from '@/components/ui/ProductImage';
 
 import { useCustomerSession, type Product as ApiProduct } from '@/hooks/useCustomerSession';
 
@@ -21,7 +23,7 @@ export default function MenuPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const tableId = (params?.tableId as string) || '01';
-  const { categories, products, loading, error, sendOrder, table } = useCustomerSession(tableId);
+  const { categories, products, loading, error, sendOrder, table, refresh } = useCustomerSession(tableId);
 
   const selectedCategoryId = searchParams.get('category');
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,18 +33,8 @@ export default function MenuPage() {
   const [selectedMeat, setSelectedMeat] = useState<string>('');
   const [selectedExtras, setSelectedExtras] = useState<string[]>([]);
   const [observations, setObservations] = useState<string>('');
+  const [quantity, setQuantity] = useState(1);
   const [submitting, setSubmitting] = useState<boolean>(false);
-
-  useEffect(() => {
-    if (!activeProduct) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setActiveProduct(null);
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeProduct]);
 
   // Abre direto o prato escolhido nas sugestões da página inicial (?product=ID)
   const requestedProductId = searchParams.get('product');
@@ -66,6 +58,7 @@ export default function MenuPage() {
     setSelectedMeat(product.customizations?.meats?.[0] ?? '');
     setSelectedExtras([]);
     setObservations('');
+    setQuantity(1);
   };
 
   const handleToggleExtra = (extraName: string) => {
@@ -89,7 +82,7 @@ export default function MenuPage() {
     const res = await sendOrder([
       {
         product_id: activeProduct.id,
-        quantity: 1,
+        quantity,
         notes: notes || undefined,
       },
     ]);
@@ -121,12 +114,12 @@ export default function MenuPage() {
         .filter((e: { name: string; price: number }) => selectedExtras.includes(e.name))
         .reduce((sum: number, e: { name: string; price: number }) => sum + e.price, 0)
     : 0;
-  const currentModalTotal = (Number(activeProduct?.price) || 0) + extrasTotal;
+  const currentModalTotal = ((Number(activeProduct?.price) || 0) + extrasTotal) * quantity;
 
   const activeItemsCount = table?.active_order?.items?.length || 0;
 
   return (
-    <div className="min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15">
+    <div className="elo-interface min-h-screen bg-[#F9F8F6] text-[#191817] flex flex-col justify-between selection:bg-[#C84E1F]/15">
       <div>
         <SalonHeader
           tableNumber={tableId}
@@ -152,7 +145,7 @@ export default function MenuPage() {
                 placeholder="Buscar por nome ou ingrediente..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-[#EAE6E1] rounded-xl pl-10 pr-4 py-2 text-xs text-[#191817] placeholder-[#6E6760] focus:outline-none focus:border-[#191817] transition-colors"
+                className="w-full bg-white border border-[#EAE6E1] rounded-xl pl-10 pr-4 py-2 text-sm text-[#191817] placeholder-[#6E6760] focus:outline-none focus:border-[#191817] transition-colors"
               />
             </div>
           </div>
@@ -164,7 +157,7 @@ export default function MenuPage() {
                 key={category.id ?? 'all'}
                 href={`/table/${tableId}/menu${category.id === null ? '' : `?category=${category.id}`}`}
                 aria-current={selectedCategoryId === (category.id === null ? null : String(category.id)) ? 'page' : undefined}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+                className={`px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                   selectedCategoryId === (category.id === null ? null : String(category.id))
                     ? 'bg-[#191817] text-white'
                     : 'bg-white text-[#6E6760] border border-[#EAE6E1] hover:border-[#191817]/30'
@@ -179,14 +172,15 @@ export default function MenuPage() {
         {/* Lista de Itens do Cardápio */}
         <main className="max-w-3xl mx-auto px-4 py-5 space-y-3 pb-24">
           {loading && (
-            <div className="text-center py-12 text-[#6E6760] text-xs">
+            <div className="text-center py-12 text-[#6E6760] text-sm">
               Carregando cardápio...
             </div>
           )}
 
           {!loading && filteredProducts.length === 0 && (
-            <div className="text-center py-12 text-[#6E6760] text-xs">
-              {error || (availableProducts.length === 0 ? 'O cardápio está sendo preparado. Chame o garçom para fazer seu pedido.' : 'Nenhum prato disponível com esses termos.')}
+            <div className="text-center py-12 text-[#6E6760] text-sm">
+              <p role={error ? 'alert' : undefined}>{error || (availableProducts.length === 0 ? 'O cardápio está sendo preparado. Chame o garçom para fazer seu pedido.' : 'Nenhum prato disponível com esses termos.')}</p>
+              {error && <button type="button" onClick={() => void refresh()} className="mt-4 min-h-11 px-5 rounded-xl bg-[#C84E1F] text-white font-semibold">Tentar novamente</button>}
             </div>
           )}
 
@@ -200,7 +194,7 @@ export default function MenuPage() {
             >
               <div className="flex-1 pr-4">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[11px] font-normal text-[#6E6760]">
+                  <span className="text-sm font-normal text-[#6E6760]">
                     {product.category_name || 'Especial'}
                   </span>
                 </div>
@@ -208,7 +202,7 @@ export default function MenuPage() {
                 <span className="block text-sm font-bold text-[#191817]">
                   {product.name}
                 </span>
-                <p className="text-xs text-[#6E6760] line-clamp-2 mt-0.5 mb-2.5 leading-relaxed">
+                <p className="text-sm text-[#6E6760] line-clamp-2 mt-0.5 mb-2.5 leading-relaxed">
                   {product.description}
                 </p>
 
@@ -220,10 +214,9 @@ export default function MenuPage() {
               </div>
 
               <div className="relative w-24 h-24 rounded-xl overflow-hidden shrink-0 border border-[#EAE6E1]">
-                <img
+                <ProductImage
                   src={product.image_url || 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?auto=format&fit=crop&w=600&q=80'}
                   alt={product.name}
-                  className="w-full h-full object-cover"
                 />
                 <span
                   className="absolute bottom-1.5 right-1.5 w-7 h-7 rounded-lg bg-[#C84E1F] hover:bg-[#B34217] text-white flex items-center justify-center transition-colors shadow-sm"
@@ -242,14 +235,14 @@ export default function MenuPage() {
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3">
           <Link
             href={`/table/${tableId}/order`}
-            className="flex-1 flex items-center justify-between py-3 px-5 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors"
+            className="flex-1 flex items-center justify-between py-3 px-5 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm sm:text-sm transition-colors"
           >
             <div className="flex items-center gap-2">
               <ShoppingBag className="w-4 h-4" />
               <span>Ver comanda da mesa</span>
             </div>
             {activeItemsCount > 0 && (
-              <span className="px-2 py-0.5 rounded-md bg-black/20 text-xs font-bold">
+              <span className="px-2 py-0.5 rounded-md bg-black/20 text-sm font-bold">
                 {activeItemsCount} {activeItemsCount === 1 ? 'item ativo' : 'itens ativos'}
               </span>
             )}
@@ -259,26 +252,19 @@ export default function MenuPage() {
 
       {/* Modal Deslizante de Personalização */}
       {activeProduct && (
-        <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setActiveProduct(null);
-          }}
-        >
+        <Modal isOpen={!!activeProduct} title={`Personalizar ${activeProduct.name}`} isBusy={submitting} onClose={() => setActiveProduct(null)}>
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Personalizar ${activeProduct.name}`}
             className="w-full max-w-lg max-h-[90vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-2xl border border-[#EAE6E1] p-6 shadow-xl flex flex-col justify-between">
             <div>
               <div className="flex justify-between items-start mb-3">
                 <div>
-                  <span className="text-xs text-[#6E6760]">
+                  <span className="text-sm text-[#6E6760]">
                     {activeProduct.category_name || 'Cardápio'}
                   </span>
                   <h2 className="text-lg font-bold text-[#191817]">{activeProduct.name}</h2>
                 </div>
                 <button
+                  disabled={submitting}
                   onClick={() => setActiveProduct(null)}
                   aria-label="Fechar modal de personalização"
                   className="w-8 h-8 rounded-lg bg-[#F9F8F6] border border-[#EAE6E1] hover:bg-[#F2EFEA] text-[#191817] flex items-center justify-center text-sm font-semibold transition-colors cursor-pointer"
@@ -287,12 +273,12 @@ export default function MenuPage() {
                 </button>
               </div>
 
-              <p className="text-xs text-[#6E6760] mb-5 leading-relaxed">{activeProduct.description}</p>
+              <p className="text-sm text-[#6E6760] mb-5 leading-relaxed">{activeProduct.description}</p>
 
               {/* Ponto da Carne */}
               {activeProduct.customizations?.meats && (
                 <div className="mb-5">
-                  <h4 className="text-xs font-semibold text-[#191817] mb-2">
+                  <h4 className="text-sm font-semibold text-[#191817] mb-2">
                     Ponto da carne
                   </h4>
                   <div className="grid grid-cols-2 gap-2">
@@ -300,7 +286,7 @@ export default function MenuPage() {
                       <button
                         key={meat}
                         onClick={() => setSelectedMeat(meat)}
-                        className={`p-2.5 rounded-xl text-xs font-medium border text-left flex items-center justify-between transition-colors cursor-pointer ${
+                        className={`p-2.5 rounded-xl text-sm font-medium border text-left flex items-center justify-between transition-colors cursor-pointer ${
                           selectedMeat === meat
                             ? 'bg-[#C84E1F]/10 border-[#C84E1F] text-[#191817]'
                             : 'bg-white border-[#EAE6E1] text-[#6E6760] hover:border-[#191817]/30'
@@ -317,7 +303,7 @@ export default function MenuPage() {
               {/* Adicionais Extras */}
               {activeProduct.customizations?.extras && (
                 <div className="mb-5">
-                  <h4 className="text-xs font-semibold text-[#191817] mb-2">
+                  <h4 className="text-sm font-semibold text-[#191817] mb-2">
                     Acompanhamentos opcionais
                   </h4>
                   <div className="space-y-2">
@@ -352,9 +338,9 @@ export default function MenuPage() {
                             >
                               {isChecked && <Check className="w-3 h-3" />}
                             </div>
-                            <span className="text-xs text-[#191817]">{extra.name}</span>
+                            <span className="text-sm text-[#191817]">{extra.name}</span>
                           </div>
-                          <span className="text-xs font-medium text-[#C84E1F]">
+                          <span className="text-sm font-medium text-[#C84E1F]">
                             + {formatBRL(extra.price)}
                           </span>
                         </div>
@@ -364,9 +350,15 @@ export default function MenuPage() {
                 </div>
               )}
 
+              <div className="mb-5">
+                <label htmlFor="product-quantity" className="block font-semibold mb-2">Quantidade</label>
+                <input id="product-quantity" type="number" min="1" max="99" value={quantity}
+                  onChange={(event) => setQuantity(Math.min(99, Math.max(1, Number(event.target.value) || 1)))}
+                  className="min-h-12 w-24 rounded-xl border border-[#E0DBD3] px-3 text-base" />
+              </div>
               {/* Observações */}
               <div className="mb-5">
-                <h4 className="text-xs font-semibold text-[#191817] mb-2">
+                <h4 className="text-sm font-semibold text-[#191817] mb-2">
                   Observações para a cozinha
                 </h4>
                 <textarea
@@ -375,7 +367,7 @@ export default function MenuPage() {
                   onChange={(e) => setObservations(e.target.value)}
                   placeholder="Ex: sem cebola, molho à parte..."
                   rows={2}
-                  className="w-full bg-white border border-[#EAE6E1] rounded-xl p-3 text-xs text-[#191817] placeholder-[#6E6760] focus:outline-none focus:border-[#191817] transition-colors"
+                  className="w-full bg-white border border-[#EAE6E1] rounded-xl p-3 text-sm text-[#191817] placeholder-[#6E6760] focus:outline-none focus:border-[#191817] transition-colors"
                 />
               </div>
             </div>
@@ -383,14 +375,14 @@ export default function MenuPage() {
             <button
               onClick={handleAddToCart}
               disabled={submitting}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-xs sm:text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-md shadow-[#C84E1F]/20"
+              className="w-full py-3.5 px-4 rounded-xl bg-[#C84E1F] hover:bg-[#B34217] text-white font-semibold text-sm sm:text-sm transition-colors flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-md shadow-[#C84E1F]/20"
             >
               <span>{submitting ? 'Enviando à cozinha...' : 'Enviar à cozinha'}</span>
               <span>•</span>
               <span>{formatBRL(currentModalTotal)}</span>
             </button>
           </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
