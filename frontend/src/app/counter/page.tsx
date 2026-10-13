@@ -498,7 +498,7 @@ export default function PosCounterPage() {
         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
           <Link href="/" className="flex items-center gap-2 group">
             <span className="text-xl font-bold tracking-tight text-[#191817]">ELO</span>
-            <span className="hidden sm:inline text-sm text-[#6E6760] border-l border-[#E0DBD3] pl-3">
+            <span className="hidden xl:inline whitespace-nowrap text-sm text-[#6E6760] border-l border-[#E0DBD3] pl-3">
               Frente de Caixa & Salão
             </span>
           </Link>
@@ -507,7 +507,7 @@ export default function PosCounterPage() {
           <Link
             href="/kitchen"
             target="_blank"
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] whitespace-nowrap hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
           >
             <ChefHat className="w-3.5 h-3.5 text-[#9E3712]" />
             <span>KDS Cozinha</span>
@@ -517,7 +517,7 @@ export default function PosCounterPage() {
           {canManageTables && (
           <Link
             href="/menu"
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
+            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm text-[#57534E] whitespace-nowrap hover:text-[#191817] hover:border-[#C84E1F] transition-colors"
           >
             <BookOpen className="w-3.5 h-3.5 text-[#9E3712]" />
             <span>Cardápio</span>
@@ -526,7 +526,7 @@ export default function PosCounterPage() {
 
           {/* Badge do Restaurante Ativo */}
           {activeRestaurant && (
-            <div className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium">
+            <div className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200 text-sm text-amber-800 font-medium whitespace-nowrap">
               <Store className="w-3.5 h-3.5 text-amber-700" />
               <span>{activeRestaurant.name}</span>
             </div>
@@ -545,7 +545,7 @@ export default function PosCounterPage() {
         </div>
 
         {/* Métricas Resumidas no Topo */}
-        <div className="hidden lg:flex items-center gap-6 text-sm text-[#6E6760]">
+        <div className="hidden 2xl:flex items-center gap-6 text-sm text-[#6E6760] whitespace-nowrap">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-600" />
             <span>
@@ -564,22 +564,22 @@ export default function PosCounterPage() {
               </strong>
             </span>
           </div>
-          <div className="h-3 w-[1px] bg-[#E0DBD3]" />
-          <div>
+          <div className="hidden min-[1920px]:block h-3 w-[1px] bg-[#E0DBD3]" />
+          <div className="hidden min-[1920px]:block">
             <span>
               Turno: <strong className="text-[#191817]">{isMounted ? currentShift : '---'}</strong>
             </span>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 shrink-0">
           {/* Operador logado */}
           <div
             title="Usuário logado neste caixa"
             className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#FAF8F5] border border-[#E0DBD3] text-sm shadow-2xs max-w-[220px]"
           >
             <span className="w-2 h-2 rounded-full bg-emerald-600 shrink-0" />
-            <span className="text-[#6E6760]">Operador:</span>
+            <span className="text-[#6E6760] whitespace-nowrap">Operador:</span>
             <span className="font-medium text-[#191817] truncate">{authUser?.name ?? '—'}</span>
           </div>
 
@@ -838,9 +838,9 @@ export default function PosCounterPage() {
                   />
                   <div className="pointer-events-none relative">
                     {/* Header do Card */}
-                    <div className="flex items-center justify-between mb-2">
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 mb-2">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-base font-bold text-[#191817]">
+                        <span className="text-base font-bold text-[#191817] whitespace-nowrap">
                           Mesa {table.number}
                         </span>
                         {table.capacity && (
@@ -851,7 +851,7 @@ export default function PosCounterPage() {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 ml-auto">
                         {table.waiter_called && (
                           <button
                             onClick={(e) => {
@@ -859,7 +859,7 @@ export default function PosCounterPage() {
                               handleClearWaiterCall(table.number);
                             }}
                             title="Clique para atender e dispensar chamado"
-                            className="text-sm font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse hover:bg-rose-600 hover:text-white transition-colors"
+                            className="pointer-events-auto text-sm font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-200 flex items-center gap-1 animate-pulse hover:bg-rose-600 hover:text-white transition-colors"
                           >
                             <Bell className="w-3 h-3" />
                             Garçom!
@@ -882,9 +882,9 @@ export default function PosCounterPage() {
                     {/* Informações Centrais */}
                     {!isFree ? (
                       <div className="space-y-1 text-sm mt-3">
-                        <div className="flex items-center justify-between text-[#6E6760]">
+                        <div className="flex items-center justify-between gap-2 text-[#6E6760]">
                           <span>Garçom</span>
-                          <span className="text-[#191817] font-medium">{table.waiter}</span>
+                          <span className="text-[#191817] font-medium truncate">{table.waiter}</span>
                         </div>
                         <div className="flex items-center justify-between text-[#6E6760]">
                           <span>Aberta às</span>
