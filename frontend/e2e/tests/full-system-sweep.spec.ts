@@ -1,251 +1,210 @@
-import { test, expect } from '@playwright/test';
+import { test as base, expect, type APIRequestContext, type APIResponse, type Page } from '@playwright/test';
+import type { User } from '../../src/lib/auth';
+import type { CatalogProduct } from '../../src/lib/catalog';
+import type { TableSession } from '../../src/hooks/useCustomerSession';
+import { normalizeTableNumber } from '../../src/lib/tablet';
+import { TabletPage } from '../pages/tablet.page';
+import { KitchenPage } from '../pages/kitchen.page';
 
-const SWEEP_TABLE = '02';
+const managerEmail = process.env.ELO_E2E_MANAGER_EMAIL;
+const managerPassword = process.env.ELO_E2E_MANAGER_PASSWORD;
+const configuredTable = process.env.ELO_E2E_TABLE;
 
-test.describe('Varredura Completa do Sistema ELO (Tablet, Menu, KDS Kanban, POS Balcão e Caixa)', () => {
+interface SweepSession {
+  api: APIRequestContext;
+  headers: Record<string, string>;
+  accessToken: string;
+  user: User;
+  tableNumber: string;
+  tablePath: string;
+  products: CatalogProduct[];
+}
 
-  test.beforeEach(async ({ request }) => {
-    // Garante mesa limpa antes de cada fluxo
+async function expectSuccessfulResponse(response: APIResponse): Promise<void> {
+  expect(response.ok(), `${response.url()}: ${response.status()}`).toBe(true);
+}
+
+async function readTable(session: SweepSession): Promise<TableSession> {
+  const response = await session.api.get(`/api/v1/customer/table/${session.tablePath}`, { headers: session.headers });
+  await expectSuccessfulResponse(response);
+  return (await response.json()).table;
+}
+
+async function placeOrder(session: SweepSession, quantity = 1): Promise<void> {
+  const response = await session.api.post(`/api/v1/customer/table/${session.tablePath}/order`, {
+    headers: session.headers,
+    data: { items: [{ product_id: session.products[0].id, quantity, notes: 'Sem sal e molho à parte' }] },
+  });
+  await expectSuccessfulResponse(response);
+}
+
+async function authenticateOperator(page: Page, session: SweepSession): Promise<void> {
+  await page.addInitScript(({ user, token }) => {
+    localStorage.setItem('elo_auth_user', JSON.stringify(user));
+    localStorage.setItem('elo_auth_token', token);
+  }, { user: session.user, token: session.accessToken });
+}
+
+const test = base.extend<{ sweep: SweepSession }, { session: SweepSession }>({
+  session: [async ({ playwright }, provideSession, workerInfo) => {
+    const api = await playwright.request.newContext({ baseURL: workerInfo.project.use.baseURL });
     try {
-      await request.post(`http://localhost:8000/api/v1/pos/tables/${SWEEP_TABLE}/reset`);
-    } catch {}
-  });
+      const login = await api.post('/api/v1/auth/login', {
+        data: { email: managerEmail, password: managerPassword },
+      });
+      await expectSuccessfulResponse(login);
+      const { access_token: accessToken, user } = await login.json();
+      expect(user.restaurant_id, 'Use a conta de um gerente do restaurante exclusivo de testes.').toBeGreaterThan(0);
+      const headers = { Authorization: `Bearer ${accessToken}`, 'X-Restaurant-Id': String(user.restaurant_id) };
 
-  test.afterAll(async ({ request }) => {
+      try {
+        const productsResponse = await api.get('/api/v1/products?per_page=200', { headers });
+        await expectSuccessfulResponse(productsResponse);
+        const products: CatalogProduct[] = (await productsResponse.json()).data.filter((product: CatalogProduct) => product.available);
+        expect(products.length, 'O restaurante de testes precisa de pelo menos dois pratos disponíveis.').toBeGreaterThanOrEqual(2);
+        const tableNumber = normalizeTableNumber(configuredTable!);
+        await provideSession({ api, headers, accessToken, user, tableNumber, tablePath: encodeURIComponent(tableNumber), products });
+      } finally {
+        await expectSuccessfulResponse(await api.post('/api/v1/auth/logout', { headers }));
+      }
+    } finally {
+      await api.dispose();
+    }
+  }, { scope: 'worker' }],
+
+  sweep: async ({ page, session }, provideSweep) => {
+    const initialTable = await readTable(session);
+    expect(initialTable.status, 'Reserve uma mesa livre no ambiente exclusivo de testes.').toBe('free');
+    expect(initialTable.active_order, 'A suíte não apaga comandas que já existiam na mesa.').toBeNull();
+    await page.addInitScript((restaurant) => {
+      localStorage.setItem('elo_active_restaurant', JSON.stringify(restaurant));
+    }, session.user.restaurant);
+
     try {
-      await request.post(`http://localhost:8000/api/v1/pos/tables/${SWEEP_TABLE}/reset`);
-    } catch {}
-  });
-
-  test('Fluxo 1: Tablet Mesa 02 - Chegada, Check-in "Estou na mesa", Escolha de Atendimento', async ({ page }) => {
-    await page.goto(`/table/${SWEEP_TABLE}`);
-
-    // Verifica que a mesa livre mostra a tela de boas-vindas com botão "Estou na mesa"
-    const startAttendanceBtn = page.getByRole('button', { name: /Iniciar atendimento • Estou na mesa/i });
-    await expect(startAttendanceBtn).toBeVisible({ timeout: 5000 });
-
-    // Inicia atendimento
-    await startAttendanceBtn.click();
-
-    // Modal de preferência deve aparecer: "Como prefere ser atendido hoje?"
-    await expect(page.getByText(/Como prefere ser atendido hoje\?/i)).toBeVisible();
-    await expect(page.getByText(/Chamar um garçom/i)).toBeVisible();
-    await expect(page.getByText(/Pedir pelo tablet/i)).toBeVisible();
-
-    // Escolhe pedir pelo tablet
-    await page.getByRole('button', { name: /Pedir pelo tablet/i }).click();
-
-    // Modal fecha e tela de experiência ativa com cardápio e favoritos aparece
-    await expect(page.getByText(/Categorias do Cardápio/i)).toBeVisible();
-    await expect(page.getByText(/Mais Pedidos da Casa/i)).toBeVisible();
-  });
-
-  test('Fluxo 2: Cardápio com Busca, Filtro, Customização com Extras e Envio à Cozinha', async ({ page, request }) => {
-    // Check-in inicial
-    await request.post(`http://localhost:8000/api/v1/customer/table/${SWEEP_TABLE}/check-in`);
-
-    await page.goto(`/table/${SWEEP_TABLE}/menu`);
-
-    // Testa filtro de categoria "Burgers"
-    const burgersCategoryBtn = page.getByRole('button', { name: 'Burgers' });
-    await expect(burgersCategoryBtn).toBeVisible();
-    await burgersCategoryBtn.click();
-
-    // Testa busca por produto
-    const searchInput = page.getByPlaceholder(/Buscar por nome ou ingrediente/i);
-    await searchInput.fill('Smash');
-
-    // Abre o produto encontrado
-    const productCard = page.getByText(/Smash ELO Bacon Duplo/i).first();
-    await expect(productCard).toBeVisible();
-    await productCard.click();
-
-    // Modal de customização
-    await expect(page.getByRole('heading', { name: /Smash ELO Bacon Duplo/i, level: 2 })).toBeVisible();
-
-    // Seleciona ponto da carne
-    const meatOption = page.getByRole('button', { name: /Ao Ponto para Bem/i });
-    if (await meatOption.isVisible()) {
-      await meatOption.click();
+      await provideSweep(session);
+    } finally {
+      await expectSuccessfulResponse(await session.api.post(`/api/v1/pos/tables/${session.tablePath}/reset`, { headers: session.headers }));
+      expect((await readTable(session)).status).toBe('free');
     }
+  },
+});
 
-    // Adiciona Bacon Extra
-    const extraOption = page.getByText(/Bacon Extra/i).first();
-    if (await extraOption.isVisible()) {
-      await extraOption.click();
+test.describe('Varredura integrada do ELO em ambiente exclusivo', () => {
+  test.skip(!managerEmail || !managerPassword || !configuredTable, 'Configure ELO_E2E_MANAGER_EMAIL, ELO_E2E_MANAGER_PASSWORD e ELO_E2E_TABLE em um ambiente exclusivo de testes.');
+
+  test.afterEach(async ({ page }, testInfo) => {
+    if (process.env.ELO_E2E_CAPTURE_SCREENSHOTS === '1' && page.url() !== 'about:blank') {
+      await page.screenshot({ path: testInfo.outputPath('visual.png'), fullPage: true });
     }
-
-    // Preenche observações
-    const obsTextarea = page.getByPlaceholder(/Ex: sem cebola/i);
-    await obsTextarea.fill('Sem cebola e molho à parte');
-
-    // Envia à cozinha
-    const submitBtn = page.getByRole('button', { name: /Enviar à cozinha/i });
-    await expect(submitBtn).toBeVisible();
-    await submitBtn.click();
-
-    // Toast de sucesso
-    await expect(page.getByText(/enviado para a cozinha/i)).toBeVisible();
-
-    // Verifica contador na barra inferior da comanda
-    await expect(page.getByText(/1 item ativo/i)).toBeVisible();
   });
 
-  test('Fluxo 3: Cozinha KDS - Recepção em Tempo Real, Visualização das Notas e Avanço de Status', async ({ page, request }) => {
-    // Cria pedido na mesa com observações
-    await request.post(`http://localhost:8000/api/v1/customer/table/${SWEEP_TABLE}/order`, {
-      data: {
-        items: [
-          {
-            product_id: 1,
-            quantity: 2,
-            notes: 'Ponto: Bem Passado • Obs: sem sal',
-          },
-        ],
-      },
-    });
-
-    await page.goto('/kitchen');
-
-    // Verifica que o pedido da Mesa 02 está visível
-    const tableHeader = page.getByText(new RegExp(`Mesa ${SWEEP_TABLE}`, 'i')).first();
-    await expect(tableHeader).toBeVisible({ timeout: 5000 });
-
-    // Verifica que o item e a observação aparecem
-    await expect(page.getByText(/Smash ELO Bacon Duplo/i).first()).toBeVisible();
-    await expect(page.getByText(/Ponto: Bem Passado/i).first()).toBeVisible();
-
-    // Avança status: Iniciar Preparo
-    const startBtn = page.getByRole('button', { name: /Iniciar Preparo/i }).first();
-    await expect(startBtn).toBeVisible();
-    await startBtn.click();
-
-    // Avança status: Concluir Prato • Chamar Garçom
-    const readyBtn = page.getByRole('button', { name: /Concluir Prato/i }).first();
-    await expect(readyBtn).toBeVisible({ timeout: 5000 });
-    await readyBtn.click();
-
-    // O status deve avançar para pronto para servir com botão de baixar entrega
-    const deliverBtn = page.getByRole('button', { name: /Entregue ao Garçom \(Baixar\)/i }).first();
-    await expect(deliverBtn).toBeVisible({ timeout: 5000 });
+  test('tablet vincula a mesa e inicia o atendimento pelo cardápio', async ({ page, sweep }) => {
+    const tablet = new TabletPage(page);
+    await tablet.gotoSetup();
+    await tablet.setupTablet(sweep.tableNumber, managerEmail!, managerPassword!);
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/table/${sweep.tablePath}`);
+    await tablet.startAttendanceButton.click();
+    await expect(page.getByRole('dialog', { name: 'Preferências de atendimento', exact: true })).toBeVisible();
+    await tablet.chooseTabletButton.click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe(`/table/${sweep.tablePath}/menu`);
+    await expect(page.getByRole('button', { name: `Personalizar e pedir ${sweep.products[0].name}`, exact: true })).toBeVisible();
+    expect((await readTable(sweep)).status).toBe('occupied');
   });
 
-  test('Fluxo 4: Chamado de Garçom e Notificação no Caixa / Balcão POS', async ({ page, request }) => {
-    // Ocupa a mesa e aciona garçom
-    await request.post(`http://localhost:8000/api/v1/customer/table/${SWEEP_TABLE}/call-waiter`);
+  test('cardápio filtra, personaliza e envia o pedido com quantidade e observações', async ({ page, sweep }) => {
+    await expectSuccessfulResponse(await sweep.api.post(`/api/v1/customer/table/${sweep.tablePath}/check-in`, { headers: sweep.headers }));
+    const product = sweep.products[0];
+    await page.goto(`/table/${sweep.tablePath}/menu`);
+    await page.getByRole('link', { name: product.category_name, exact: true }).click();
+    await page.getByRole('textbox', { name: 'Buscar no cardápio' }).fill(product.name);
+    await page.getByRole('button', { name: `Personalizar e pedir ${product.name}`, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: `Personalizar ${product.name}`, exact: true });
+    await dialog.getByLabel('Quantidade', { exact: true }).fill('2');
+    await dialog.getByLabel('Observações para a cozinha').fill('Sem cebola e molho à parte');
+    await dialog.getByRole('button', { name: /Enviar à cozinha/ }).click();
+    await expect(page.getByText(`${product.name} enviado para a cozinha!`, { exact: true })).toBeVisible();
+    expect((await readTable(sweep)).active_order?.items).toEqual([
+      expect.objectContaining({ product_id: product.id, quantity: 2, notes: 'Obs: Sem cebola e molho à parte' }),
+    ]);
+    await page.getByRole('link', { name: 'Ver comanda', exact: true }).click();
+    await expect(page.getByRole('heading', { name: product.name, exact: true })).toBeVisible();
+  });
 
-    // Acessa o balcão
+  test('cozinha recebe as observações e avança do preparo até a entrega', async ({ page, sweep }) => {
+    await placeOrder(sweep, 2);
+    await authenticateOperator(page, sweep);
+    const kitchen = new KitchenPage(page);
+    await kitchen.goto();
+    await kitchen.expectTableOrderVisible(sweep.tableNumber);
+    await expect(page.getByText('• Sem sal e molho à parte', { exact: true })).toBeVisible();
+    await kitchen.advanceOrderForTable(sweep.tableNumber, 'Iniciar preparo');
+    await kitchen.advanceOrderForTable(sweep.tableNumber, 'Concluir prato e chamar garçom');
+    await kitchen.advanceOrderForTable(sweep.tableNumber, 'Entregue ao salão (baixar)');
+    await expect(page.getByText(`Mesa ${sweep.tableNumber}`, { exact: true })).toHaveCount(0);
+    expect((await readTable(sweep)).active_order?.items).toEqual([
+      expect.objectContaining({ quantity: 2, status: 'delivered' }),
+    ]);
+  });
+
+  test('caixa recebe e atende o chamado de garçom', async ({ page, sweep }) => {
+    await expectSuccessfulResponse(await sweep.api.post(`/api/v1/customer/table/${sweep.tablePath}/call-waiter`, { headers: sweep.headers }));
+    await authenticateOperator(page, sweep);
     await page.goto('/counter');
-
-    // No balcão, a Mesa 02 deve exibir o alerta "Garçom chamado!"
-    const waiterAlert = page.getByRole('button', { name: /Garçom chamado/i }).first();
-    await expect(waiterAlert).toBeVisible({ timeout: 5000 });
-
-    // Clica no alerta para atender o chamado
+    const waiterAlert = page.getByRole('button', { name: 'Garçom!', exact: true });
+    await expect(waiterAlert).toBeVisible();
     await waiterAlert.click();
-
-    // Alerta é removido
-    await expect(waiterAlert).not.toBeVisible({ timeout: 5000 });
+    await expect(waiterAlert).toHaveCount(0);
+    const tablesResponse = await sweep.api.get('/api/v1/pos/tables', { headers: sweep.headers });
+    await expectSuccessfulResponse(tablesResponse);
+    const table = (await tablesResponse.json()).tables.find((item: { number: string }) => item.number === sweep.tableNumber);
+    expect(table.waiter_called).toBe(false);
   });
 
-  test('Fluxo 5: Balcão POS - Lançamento Manual de Item na Comanda e Fechamento', async ({ page, request }) => {
-    // Abre a mesa
-    await request.post(`http://localhost:8000/api/v1/pos/tables/${SWEEP_TABLE}/open`);
-
+  test('caixa lança um item, confirma o fechamento e libera a mesa', async ({ page, sweep }) => {
+    await expectSuccessfulResponse(await sweep.api.post(`/api/v1/pos/tables/${sweep.tablePath}/open`, { headers: sweep.headers }));
+    await authenticateOperator(page, sweep);
     await page.goto('/counter');
-
-    // Seleciona a Mesa 02 no mapa
-    const tableCard = page.getByRole('button', { name: new RegExp(`Mesa ${SWEEP_TABLE}`, 'i') });
-    await tableCard.click();
-
-    // Drawer da comanda deve abrir à direita
-    await expect(page.getByRole('heading', { name: new RegExp(`Mesa ${SWEEP_TABLE}`, 'i') })).toBeVisible();
-
-    // Clica em "Lançar item"
-    const addItemBtn = page.getByRole('button', { name: /Lançar item/i });
-    await expect(addItemBtn).toBeVisible();
-    await addItemBtn.click();
-
-    // Modal de lançamento aparece
-    await expect(page.getByText(/Lançar item na Mesa/i)).toBeVisible();
-
-    // Seleciona o primeiro produto do select
-    const productSelect = page.locator('select');
-    await productSelect.selectOption({ index: 1 });
-
-    // Confirma lançamento
-    const confirmLaunchBtn = page.getByRole('button', { name: /Confirmar lançamento/i });
-    await confirmLaunchBtn.click();
-
-    // Toast de sucesso e item listado
-    await expect(page.getByText(/Item lançado na comanda com sucesso/i)).toBeVisible();
-    await expect(page.getByText(/Itens consumidos \(1\)/i)).toBeVisible();
-
-    // Seleciona pagamento PIX e fecha a mesa
-    const pixBtn = page.getByRole('button', { name: 'PIX' });
-    await pixBtn.click();
-
-    const closeBtn = page.getByRole('button', { name: /Fechar mesa/i });
-    await closeBtn.click();
-
-    // Confirmação de baixa
-    await expect(page.getByText(/finalizada com sucesso/i)).toBeVisible();
+    await page.getByRole('button', { name: `Mesa ${sweep.tableNumber}, ocupada`, exact: true }).click();
+    await page.getByRole('button', { name: 'Lançar item', exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: `Lançar item na Mesa ${sweep.tableNumber}`, exact: true });
+    await dialog.getByLabel('Selecione o produto').selectOption(String(sweep.products[0].id));
+    await dialog.getByRole('button', { name: 'Confirmar lançamento', exact: true }).click();
+    await expect(page.getByText('Item lançado na comanda com sucesso!', { exact: true })).toBeVisible();
+    await expect(page.getByText('Itens consumidos (1)', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'PIX', exact: true }).click();
+    await page.getByRole('button', { name: 'Fechar mesa', exact: true }).click();
+    await page.getByRole('dialog', { name: 'Ainda há pratos na cozinha', exact: true })
+      .getByRole('button', { name: 'Fechar conta mesmo assim', exact: true }).click();
+    await expect(page.getByText(`Mesa ${sweep.tableNumber} finalizada com sucesso! Baixa realizada.`, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: `Mesa ${sweep.tableNumber}, livre`, exact: true })).toBeVisible();
+    const table = await readTable(sweep);
+    expect(table.status).toBe('free');
+    expect(table.active_order).toBeNull();
   });
 
-  test('Fluxo 6: Divisão de Conta e Solicitação de Pagamento pelo Tablet (/table/02/order)', async ({ page, request }) => {
-    // Cria pedido com 2 itens
-    await request.post(`http://localhost:8000/api/v1/customer/table/${SWEEP_TABLE}/order`, {
-      data: {
-        items: [
-          { product_id: 1, quantity: 1 },
-          { product_id: 2, quantity: 1 },
-        ],
-      },
+  test('cliente divide a conta e solicita o recebimento pela equipe', async ({ page, sweep }) => {
+    await placeOrder(sweep, 2);
+    await page.goto(`/table/${sweep.tablePath}/order`);
+    await expect(page.getByRole('heading', { name: sweep.products[0].name, exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Aumentar número de pessoas', exact: true }).click();
+    await expect(page.getByText('3 pessoas', { exact: true })).toBeVisible();
+    await expect(page.getByText('Por pessoa (3x)', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: /Pedir conta/ }).click();
+    const dialog = page.getByRole('dialog', { name: `Pagamento da Mesa ${sweep.tableNumber}`, exact: true });
+    await expect(dialog.getByRole('button', { name: 'Pagar com a equipe (PIX, maquininha ou dinheiro)', exact: true })).toBeVisible();
+    expect((await readTable(sweep)).status).toBe('bill_requested');
+  });
+
+  test('API rejeita a exclusão de mesa ocupada e o cadastro de uma mesa duplicada', async ({ sweep }) => {
+    await expectSuccessfulResponse(await sweep.api.post(`/api/v1/pos/tables/${sweep.tablePath}/open`, { headers: sweep.headers }));
+    const deletion = await sweep.api.delete(`/api/v1/pos/tables/${sweep.tablePath}`, { headers: sweep.headers });
+    expect(deletion.status()).toBe(422);
+    expect((await deletion.json()).message).toContain('Não é possível excluir');
+    const duplicate = await sweep.api.post('/api/v1/pos/tables', {
+      headers: sweep.headers,
+      data: { number: sweep.tableNumber, capacity: 4 },
     });
-
-    await page.goto(`/table/${SWEEP_TABLE}/order`);
-
-    // Verifica que os itens aparecem na comanda
-    await expect(page.getByText(/Itens na comanda/i)).toBeVisible();
-    await expect(page.getByText(/Smash ELO Bacon Duplo/i)).toBeVisible();
-
-    // Testa divisão da conta: aumenta para 3 pessoas
-    const plusSplitBtn = page.getByRole('button', { name: '+' });
-    await plusSplitBtn.click();
-    await expect(page.getByText(/3 pessoas/i)).toBeVisible();
-    await expect(page.getByText(/Por pessoa \(3x\)/i)).toBeVisible();
-
-    // Clica no botão de pedir conta
-    const requestBillBtn = page.getByRole('button', { name: /Pedir conta/i });
-    await expect(requestBillBtn).toBeVisible();
-    await requestBillBtn.click();
-
-    // Modal de PIX abre com QR code
-    await expect(page.getByText(new RegExp(`Pagamento da Mesa ${SWEEP_TABLE}`, 'i'))).toBeVisible();
-    await expect(page.getByRole('button', { name: /Copiar código PIX/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Pagar com Cartão \(Stripe Online\)/i })).toBeVisible();
+    expect(duplicate.status()).toBe(422);
+    expect((await duplicate.json()).message).toContain('Já existe uma mesa cadastrada');
   });
-
-  test('Fluxo 7: Validações de Borda do POS (Exclusão bloqueada de mesa ocupada e Criação de duplicata)', async ({ request }) => {
-    // 1. Ocupa a mesa 02
-    await request.post(`http://localhost:8000/api/v1/pos/tables/${SWEEP_TABLE}/open`);
-
-    // Tentar excluir mesa ocupada deve retornar 422
-    const deleteRes = await request.delete(`http://localhost:8000/api/v1/pos/tables/${SWEEP_TABLE}`);
-    expect(deleteRes.status()).toBe(422);
-    const deleteJson = await deleteRes.json();
-    expect(deleteJson.message).toContain('Não é possível excluir');
-
-    // 2. Tentar cadastrar mesa com número já existente deve retornar 422
-    const duplicateRes = await request.post('http://localhost:8000/api/v1/pos/tables', {
-      data: {
-        number: SWEEP_TABLE,
-        capacity: 4,
-      },
-    });
-    expect(duplicateRes.status()).toBe(422);
-    const dupJson = await duplicateRes.json();
-    expect(dupJson.message).toContain('Já existe uma mesa cadastrada');
-  });
-
 });

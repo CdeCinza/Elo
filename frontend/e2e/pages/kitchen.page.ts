@@ -30,11 +30,13 @@ export class KitchenPage {
     await expect(tableBadge).toBeVisible();
   }
 
-  async advanceOrderForTable(tableNumber: string) {
-    const card = this.page.locator('div').filter({ hasText: new RegExp(`Mesa ${tableNumber}`, 'i') }).first();
-    const advanceButton = card.getByRole('button', { name: /Iniciar preparo|Concluir Prato|Pronto/i }).first();
-    if (await advanceButton.isVisible()) {
-      await advanceButton.click();
-    }
+  async advanceOrderForTable(tableNumber: string, actionName = 'Iniciar preparo'): Promise<void> {
+    // O cartão não tem um papel próprio: busca o menor contêiner com a mesa e a ação.
+    const card = this.page.locator('div').filter({
+      has: this.page.getByText(`Mesa ${tableNumber}`, { exact: true }),
+    }).filter({
+      has: this.page.getByRole('button', { name: actionName, exact: true }),
+    }).last();
+    await card.getByRole('button', { name: actionName, exact: true }).click();
   }
 }

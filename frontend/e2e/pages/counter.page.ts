@@ -18,9 +18,10 @@ export class CounterPage {
   }
 
   async selectTable(tableNumber: string) {
-    const tableHeader = this.page.getByText(`Mesa ${tableNumber}`, { exact: true }).first();
-    await expect(tableHeader).toBeVisible();
-    await tableHeader.click();
+    const escapedNumber = tableNumber.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tableButton = this.page.getByRole('button', { name: new RegExp(`^Mesa ${escapedNumber},`) });
+    await expect(tableButton).toBeVisible();
+    await tableButton.click();
   }
 
   async expectTableCardStatus(tableNumber: string, statusText: string | RegExp) {

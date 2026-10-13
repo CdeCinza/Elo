@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { CheckCircle2, AlertCircle, AlertTriangle, Info, X } from 'lucide-react';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -61,78 +61,50 @@ const MAX_TOASTS = 3;
 
 export function ToastProvider({ children }: { children: React.ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-  const timersRef = React.useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const toastsRef = useRef<ToastItem[]>([]);
+  const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const dismissToast = useCallback((id: string) => {
     if (timersRef.current.has(id)) {
       clearTimeout(timersRef.current.get(id));
       timersRef.current.delete(id);
     }
-    setToasts((prev) => prev.filter((t) => t.id !== id));
+    toastsRef.current = toastsRef.current.filter((item) => item.id !== id);
+    setToasts(toastsRef.current);
   }, []);
 
   const dismissAll = useCallback(() => {
     timersRef.current.forEach((timer) => clearTimeout(timer));
     timersRef.current.clear();
+    toastsRef.current = [];
     setToasts([]);
   }, []);
 
   const showToast = useCallback(
     ({ type, title, message, duration = 3200 }: Omit<ToastItem, 'id' | 'count'>) => {
-      let activeId = '';
+      const currentToasts = toastsRef.current;
+      const existing = currentToasts.find(
+        (item) => item.type === type && item.message === message && item.title === title
+      );
+      const id = existing?.id ?? `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+      const nextToast: ToastItem = { id, type, title, message, duration, count: (existing?.count ?? 0) + 1 };
+      const nextToasts = existing
+        ? currentToasts.map((item) => item.id === id ? nextToast : item)
+        : [...currentToasts, nextToast];
 
-      setToasts((prev) => {
-        // 1. Verifica se já existe um toast idêntico
-        const existing = prev.find(
-          (t) => t.type === type && t.message === message && t.title === title
-        );
-
-        if (existing) {
-          activeId = existing.id;
-          if (timersRef.current.has(existing.id)) {
-            clearTimeout(timersRef.current.get(existing.id));
-          }
-
-          if (duration > 0) {
-            const timer = setTimeout(() => {
-              dismissToast(existing.id);
-            }, duration);
-            timersRef.current.set(existing.id, timer);
-          }
-
-          return prev.map((t) =>
-            t.id === existing.id ? { ...t, count: t.count + 1, duration } : t
-          );
-        }
-
-        // 2. Novo toast
-        const id = `${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-        activeId = id;
-        const newToast: ToastItem = { id, type, title, message, duration, count: 1 };
-
-        const next = [...prev, newToast];
-        if (next.length > MAX_TOASTS) {
-          const overflow = next.slice(0, next.length - MAX_TOASTS);
-          overflow.forEach((item) => {
-            if (timersRef.current.has(item.id)) {
-              clearTimeout(timersRef.current.get(item.id));
-              timersRef.current.delete(item.id);
-            }
-          });
-          return next.slice(-MAX_TOASTS);
-        }
-
-        if (duration > 0) {
-          const timer = setTimeout(() => {
-            dismissToast(id);
-          }, duration);
-          timersRef.current.set(id, timer);
-        }
-
-        return next;
+      nextToasts.slice(0, Math.max(0, nextToasts.length - MAX_TOASTS)).forEach((item) => {
+        clearTimeout(timersRef.current.get(item.id));
+        timersRef.current.delete(item.id);
       });
+      clearTimeout(timersRef.current.get(id));
+      timersRef.current.delete(id);
+      if (duration > 0) {
+        timersRef.current.set(id, setTimeout(() => dismissToast(id), duration));
+      }
 
-      return activeId;
+      toastsRef.current = nextToasts.slice(-MAX_TOASTS);
+      setToasts(toastsRef.current);
+      return id;
     },
     [dismissToast]
   );
@@ -142,8 +114,11 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
       showToast(toastData);
     };
     listeners.add(handler);
+    const timers = timersRef.current;
     return () => {
       listeners.delete(handler);
+      timers.forEach((timer) => clearTimeout(timer));
+      timers.clear();
     };
   }, [showToast]);
 
