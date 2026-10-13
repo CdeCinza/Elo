@@ -93,3 +93,7 @@ O workflow de CI executa a suíte PHP e o lint e build do frontend em pushes e p
 O fluxo principal funciona como demonstração técnica. Antes de disponibilizar uma instância pública, ainda é necessário revisar credenciais de exemplo, configuração de e-mail e Stripe, observabilidade e processo de implantação. As rotas públicas de mesa usam um número previsível e ainda não exigem uma credencial individual da sessão para pedidos, chamados e consulta da comanda; esse fluxo precisa de autorização própria antes de ser exposto como serviço real. Ingredientes já baixados no início do preparo não voltam automaticamente ao estoque quando um pedido é cancelado ou uma mesa é liberada; isso precisa de uma regra operacional definida para desperdício e estorno.
 
 O [relatório de QA](docs/relatorio-qa-hardening.md) registra uma revisão anterior e seus resultados na época. A [estratégia de qualidade](docs/qa-strategy.md) distingue as verificações executadas pela CI da jornada integrada que requer ambiente exclusivo. As correções posteriores devem ser avaliadas pelos testes e pelo histórico do repositório.
+
+## Licença
+
+Distribuído sob a [licença MIT](LICENSE).
