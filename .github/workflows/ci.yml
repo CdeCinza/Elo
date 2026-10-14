@@ -76,7 +76,10 @@ jobs:
       - name: Audit root JavaScript dependencies
         run: npm audit --audit-level=high
         working-directory: .
-      - run: npm audit --audit-level=high
+      - name: Test dependency audit policy
+        run: npm run test:audit
+      - name: Audit frontend dependencies
+        run: npm run audit:ci
       - run: npm run lint
       - run: npm run build
 
